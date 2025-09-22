@@ -164,6 +164,7 @@ function buildSystemPrompt() {
         '',
         'CRITICAL RULES:',
         '• Return ONLY the JSON object - no explanations, no markdown formatting, no additional text',
+        '• Do NOT wrap the JSON in code blocks (```json or ```)',
         '• Include ONLY the fields that are being edited',
         '• Ensure all JSON strings are properly escaped',
         '• If editing dialogue examples, use proper dialogue formatting with quotes and actions',
@@ -910,7 +911,7 @@ function getModelFromContextByApi(profile) {
                     const mv = obj[pkey];
                     if (typeof mv === 'string' && mv.trim().length > 0) {
                         const cleaned = mv.trim();
-                        console.log(`${TAG} FOUND ${path}.${pkey}.model =>`, cleaned);
+                        console.debug(`${TAG} FOUND ${path}.${pkey}.model =>`, cleaned);
                         return cleaned;
                     }
                 }
@@ -930,7 +931,7 @@ function getModelFromContextByApi(profile) {
             if (found) return found;
         }
 
-        console.log(`${TAG} no model found for provider:`, canonProvider);
+        console.debug(`${TAG} no model found for provider:`, canonProvider);
         return null;
     } catch (e) {
         console.warn('[STCM Field Editor] getModelFromContextByApi error:', e);
@@ -940,14 +941,20 @@ function getModelFromContextByApi(profile) {
 
 async function onApplyChanges(responseText) {
     try {
-        // Try to extract JSON from the response
-        let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        // Try to extract JSON from the response - handle markdown code blocks
+        let jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+        if (!jsonMatch) {
+            // Try without code blocks
+            jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        }
+        
         if (!jsonMatch) {
             toastr.error('No valid JSON found in the response. Please ask the LLM to provide the changes in JSON format.');
             return;
         }
 
-        const changes = JSON.parse(jsonMatch[0]);
+        const jsonString = jsonMatch[1] || jsonMatch[0];
+        const changes = JSON.parse(jsonString);
         const updatedFields = [];
 
         // Apply changes to character object
@@ -966,8 +973,11 @@ async function onApplyChanges(responseText) {
         // Save to server
         await saveCharacterChanges(currentCharacter, changes);
         
-        // Update the field preview display
+        // Update the field preview display in the field editor
         updateFieldPreviews();
+        
+        // Update the character edit panel if it's open
+        updateCharacterEditPanel();
         
         toastr.success(`Applied changes to ${updatedFields.length} field(s): ${updatedFields.join(', ')}`);
 
@@ -987,6 +997,28 @@ function updateFieldPreviews() {
                 '(empty)';
         }
     });
+}
+
+function updateCharacterEditPanel() {
+    // Find any open character edit modal for this character
+    const modalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(modalId);
+    
+    if (editModal) {
+        // Update the input fields in the character edit panel
+        const inputs = editModal.querySelectorAll('.charEditInput');
+        inputs.forEach(input => {
+            const fieldPath = input.name;
+            if (fieldPath) {
+                const currentValue = getFieldValue(currentCharacter, fieldPath);
+                if (input.value !== currentValue) {
+                    input.value = currentValue;
+                    // Trigger change event to notify any listeners
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+        });
+    }
 }
 
 async function saveCharacterChanges(character, changes) {
