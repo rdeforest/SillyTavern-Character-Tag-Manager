@@ -64,6 +64,7 @@ import {
 import { injectStcmSettingsPanel, updateDefaultTagManagerVisibility, updateRecentChatsVisibility, STCM_feedbackSendIfDue } from './settings-drawer.js';
 
 import { initCustomGreetingWorkshop } from './stcm_custom_greetings.js';
+import { initCharacterFieldEditor } from './stcm_char_field_editor.js';
 
 
 
@@ -980,6 +981,7 @@ eventSource.on(event_types.APP_READY, async () => {
     injectStcmSettingsPanel();    
     restoreCharEditModal();
     initCustomGreetingWorkshop();
+    initCharacterFieldEditor();
     STCM_feedbackSendIfDue('app_ready');
 
 });

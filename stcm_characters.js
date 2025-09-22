@@ -23,6 +23,8 @@ import * as stcmFolders from './stcm_folders.js';
 import { getFolderOptionsTree } from './stcm_folders_ui.js'; // adjust path if needed
 import { createEditSectionForCharacter } from './stcm_char_panel.js'
 import { openAISuggestFolderForCharacter, openAISuggestTagsForCharacter } from './stcm_ai_suggest_folder_tags.js';
+import { openCharacterFieldEditor } from './stcm_char_field_editor.js';
+
 
 
 async function renderCharacterList() {
@@ -668,6 +670,13 @@ function openCharEditModal(char) {
       title.className = 'modalTitle';
       title.textContent = `Edit Character: ${char.name}`;
   
+      const fieldEditorBtn = document.createElement('button');
+      fieldEditorBtn.className = 'stcm_menu_button interactable';
+      fieldEditorBtn.textContent = '🎭 Field Editor';
+      fieldEditorBtn.title = 'Edit character fields with AI assistance';
+      fieldEditorBtn.style.marginRight = '8px';
+      fieldEditorBtn.onclick = () => openCharacterFieldEditor(char);
+  
       const closeBtn = document.createElement('button');
       closeBtn.className = 'stcm_menu_button interactable modal-close modalCloseBtn';
       closeBtn.textContent = '×';
@@ -677,6 +686,7 @@ function openCharEditModal(char) {
       const { minimizeBtn } = createMinimizableModalControls(modal, `Editing: ${char.name}`, avatarSrc);
   
       header.appendChild(title);
+      header.appendChild(fieldEditorBtn);
       header.appendChild(minimizeBtn);
       header.appendChild(closeBtn);
   
