@@ -201,138 +201,200 @@ function openFieldEditor(character) {
     currentCharacter = character;
     loadSession();
 
-    if (modal) closeFieldEditor();
-
-    overlay = el('div', 'stcm-gw-overlay');
-    modal = el('div', 'stcm-gw-modal field-editor');
-    modal.style.width = '90vw';
-    modal.style.maxWidth = '1200px';
-    modal.style.height = '80vh';
-
-    // Header
-    const header = el('div', 'stcm-gw-header', `🎭 Field Editor - ${character.name}`);
+    // Find the character edit modal
+    const editModalId = `stcmCharEditModal-${character.avatar}`;
+    const editModal = document.getElementById(editModalId);
     
-    const closeBtn = mkBtn('X', 'danger');
-    closeBtn.addEventListener('click', closeFieldEditor);
-    header.append(closeBtn);
+    if (!editModal) {
+        toastr.error('Character edit modal not found. Please open the character edit panel first.');
+        return;
+    }
 
-    // Main content area (split layout)
-    const mainContent = el('div', 'stcm-field-editor-main');
-    mainContent.style.display = 'flex';
-    mainContent.style.height = 'calc(100% - 120px)';
-    mainContent.style.gap = '16px';
+    // Check if field editor is already open
+    const existingFieldEditor = editModal.querySelector('.stcm-field-editor-panel');
+    if (existingFieldEditor) {
+        // Toggle off if already open
+        closeFieldEditor();
+        return;
+    }
 
-    // Left side: Field selection
-    const leftPanel = createFieldSelectionPanel();
-    leftPanel.style.width = '300px';
-    leftPanel.style.minWidth = '300px';
-
-    // Right side: Chat interface
-    const rightPanel = createChatPanel();
-    rightPanel.style.flex = '1';
-
-    mainContent.append(leftPanel, rightPanel);
-
-    // Footer
-    const footer = el('div', 'stcm-gw-footer');
-    const clearBtn = mkBtn('Clear Memory', 'danger');
-    clearBtn.addEventListener('click', () => {
-        if (confirm('Clear all conversation history? This cannot be undone.')) {
-            miniTurns = [];
-            saveSession();
-            restoreUIFromState();
+    // Create the field editor panel
+    const fieldEditorPanel = createFieldEditorPanel();
+    
+    // Add the panel to the edit modal
+    const modalBody = editModal.querySelector('.modalBody');
+    if (modalBody) {
+        // Make the modal body flex to accommodate the side panel
+        modalBody.style.display = 'flex';
+        modalBody.style.gap = '16px';
+        
+        // Make the existing content take up remaining space
+        const existingContent = modalBody.firstElementChild;
+        if (existingContent) {
+            existingContent.style.flex = '1';
+            existingContent.style.minWidth = '0'; // Prevent overflow
         }
-    });
-
-    footer.append(spacer(), clearBtn);
-
-    // Assemble modal
-    modal.append(header, mainContent, footer);
-    document.body.append(overlay, modal);
-
-    // Esc handler
-    const escHandler = (e) => {
-        if (e.key === 'Escape' && modal && modal.style.display !== 'none') {
-            e.preventDefault();
-            e.stopPropagation();
-            closeFieldEditor();
-        }
-    };
-    document.addEventListener('keydown', escHandler, true);
-    modal._escHandler = escHandler;
-
-    // Draggable
-    makeDraggable(modal, header);
+        
+        // Add the field editor panel
+        modalBody.appendChild(fieldEditorPanel);
+        
+        // Expand the modal to accommodate the side panel
+        expandModalForFieldEditor(editModal);
+    }
 
     // Initialize UI
     restoreUIFromState();
 }
 
 function closeFieldEditor() {
-    if (modal?._escHandler) {
-        document.removeEventListener('keydown', modal._escHandler, true);
+    if (!currentCharacter) return;
+    
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    
+    if (editModal) {
+        const fieldEditorPanel = editModal.querySelector('.stcm-field-editor-panel');
+        if (fieldEditorPanel) {
+            fieldEditorPanel.remove();
+            
+            // Restore modal body layout
+            const modalBody = editModal.querySelector('.modalBody');
+            if (modalBody) {
+                modalBody.style.display = '';
+                modalBody.style.gap = '';
+                
+                const existingContent = modalBody.firstElementChild;
+                if (existingContent) {
+                    existingContent.style.flex = '';
+                    existingContent.style.minWidth = '';
+                }
+            }
+            
+            // Restore modal size
+            restoreModalFromFieldEditor(editModal);
+        }
     }
-    if (modal) modal.remove();
-    if (overlay) overlay.remove();
-    modal = null;
-    overlay = null;
+    
+    // Clear state
+    currentCharacter = null;
+    selectedFields = new Set();
+    miniTurns = [];
 }
 
-function createFieldSelectionPanel() {
-    const panel = el('div', 'stcm-field-selection-panel');
-    panel.style.borderRight = '1px solid #444';
-    panel.style.paddingRight = '16px';
-    panel.style.overflowY = 'auto';
+function createFieldEditorPanel() {
+    const panel = el('div', 'stcm-field-editor-panel');
+    panel.style.width = '400px';
+    panel.style.minWidth = '400px';
+    panel.style.maxWidth = '500px';
+    panel.style.borderLeft = '1px solid var(--stcm-gw-border)';
+    panel.style.paddingLeft = '16px';
+    panel.style.display = 'flex';
+    panel.style.flexDirection = 'column';
+    panel.style.height = '100%';
+    panel.style.backgroundColor = 'var(--stcm-gw-bg)';
 
-    const title = el('h3', null, 'Select Fields to Edit');
-    title.style.marginTop = '0';
-    title.style.marginBottom = '16px';
+    // Header
+    const header = el('div', 'stcm-field-editor-header');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.marginBottom = '16px';
+    header.style.paddingBottom = '8px';
+    header.style.borderBottom = '1px solid var(--stcm-gw-border)';
+
+    const title = el('h3', null, '🎭 AI Field Editor');
+    title.style.margin = '0';
+    title.style.fontSize = '16px';
+
+    const closeBtn = mkBtn('×', 'danger');
+    closeBtn.style.padding = '4px 8px';
+    closeBtn.style.fontSize = '16px';
+    closeBtn.addEventListener('click', closeFieldEditor);
+
+    header.append(title, closeBtn);
+
+    // Field selection section
+    const fieldSection = createFieldSelectionSection();
+    fieldSection.style.flex = '0 0 auto';
+    fieldSection.style.maxHeight = '40%';
+    fieldSection.style.overflowY = 'auto';
+    fieldSection.style.marginBottom = '16px';
+
+    // Chat section
+    const chatSection = createChatSection();
+    chatSection.style.flex = '1';
+    chatSection.style.minHeight = '0';
+
+    panel.append(header, fieldSection, chatSection);
+    return panel;
+}
+
+function createFieldSelectionSection() {
+    const section = el('div', 'stcm-field-selection-section');
+
+    const title = el('h4', null, 'Select Fields to Edit');
+    title.style.margin = '0 0 12px 0';
+    title.style.fontSize = '14px';
+    title.style.color = '#aaa';
 
     const controls = el('div', 'stcm-field-controls');
-    controls.style.marginBottom = '16px';
+    controls.style.marginBottom = '12px';
     controls.style.display = 'flex';
-    controls.style.gap = '8px';
+    controls.style.gap = '6px';
 
-    const selectAllBtn = mkBtn('Select All', 'info');
-    const selectNoneBtn = mkBtn('Select None', 'ghost');
+    const selectAllBtn = mkBtn('All', 'info');
+    const selectNoneBtn = mkBtn('None', 'ghost');
+    selectAllBtn.style.padding = '4px 8px';
+    selectAllBtn.style.fontSize = '12px';
+    selectNoneBtn.style.padding = '4px 8px';
+    selectNoneBtn.style.fontSize = '12px';
 
     selectAllBtn.addEventListener('click', () => {
         CHARACTER_FIELDS.forEach(field => {
             if (!field.readonly) selectedFields.add(field.key);
         });
-        updateFieldCheckboxes();
+        updateSidePanelCheckboxes();
         saveSession();
     });
 
     selectNoneBtn.addEventListener('click', () => {
         selectedFields.clear();
-        updateFieldCheckboxes();
+        updateSidePanelCheckboxes();
         saveSession();
     });
 
     controls.append(selectAllBtn, selectNoneBtn);
 
     const fieldList = el('div', 'stcm-field-list');
+    fieldList.style.maxHeight = '200px';
+    fieldList.style.overflowY = 'auto';
     
-    // Group fields by category
-    const categories = ['basics', 'advanced', 'metadata'];
-    categories.forEach(category => {
-        const categoryFields = CHARACTER_FIELDS.filter(f => f.category === category);
-        if (categoryFields.length === 0) return;
+    // Group fields by category with simplified display
+    const categories = [
+        { key: 'basics', label: 'Basic Fields', fields: CHARACTER_FIELDS.filter(f => f.category === 'basics') },
+        { key: 'advanced', label: 'Advanced', fields: CHARACTER_FIELDS.filter(f => f.category === 'advanced') },
+        { key: 'metadata', label: 'Metadata', fields: CHARACTER_FIELDS.filter(f => f.category === 'metadata') }
+    ];
 
-        const categoryTitle = el('h4', 'stcm-field-category-title');
-        categoryTitle.textContent = category.charAt(0).toUpperCase() + category.slice(1);
-        categoryTitle.style.marginTop = '16px';
-        categoryTitle.style.marginBottom = '8px';
-        categoryTitle.style.color = '#aaa';
+    categories.forEach(category => {
+        if (category.fields.length === 0) return;
+
+        const categoryTitle = el('div', 'stcm-field-category-title');
+        categoryTitle.textContent = category.label;
+        categoryTitle.style.fontSize = '12px';
+        categoryTitle.style.fontWeight = '600';
+        categoryTitle.style.color = '#888';
+        categoryTitle.style.marginTop = '8px';
+        categoryTitle.style.marginBottom = '4px';
         fieldList.appendChild(categoryTitle);
 
-        categoryFields.forEach(field => {
+        category.fields.forEach(field => {
             const fieldRow = el('div', 'stcm-field-row');
             fieldRow.style.display = 'flex';
-            fieldRow.style.alignItems = 'flex-start';
-            fieldRow.style.marginBottom = '8px';
-            fieldRow.style.gap = '8px';
+            fieldRow.style.alignItems = 'center';
+            fieldRow.style.marginBottom = '4px';
+            fieldRow.style.gap = '6px';
+            fieldRow.style.fontSize = '13px';
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -353,51 +415,33 @@ function createFieldSelectionPanel() {
             label.htmlFor = `field-${field.key}`;
             label.style.cursor = field.readonly ? 'default' : 'pointer';
             label.style.flex = '1';
-            label.style.fontSize = '14px';
+            label.style.fontSize = '13px';
+            label.textContent = field.label;
             
-            const labelText = el('div', null, field.label);
-            const currentValue = getFieldValue(currentCharacter, field.key);
-            const preview = el('div', 'stcm-field-preview');
-            preview.style.fontSize = '12px';
-            preview.style.color = '#888';
-            preview.style.marginTop = '2px';
-            preview.textContent = currentValue ? 
-                (currentValue.length > 50 ? currentValue.substring(0, 50) + '...' : currentValue) : 
-                '(empty)';
-            
-            label.append(labelText, preview);
-
             fieldRow.append(checkbox, label);
             fieldList.appendChild(fieldRow);
         });
     });
 
-    panel.append(title, controls, fieldList);
-    return panel;
+    section.append(title, controls, fieldList);
+    return section;
 }
 
-function updateFieldCheckboxes() {
-    CHARACTER_FIELDS.forEach(field => {
-        const checkbox = document.getElementById(`field-${field.key}`);
-        if (checkbox) {
-            checkbox.checked = selectedFields.has(field.key);
-        }
-    });
-}
-
-function createChatPanel() {
-    const panel = el('div', 'stcm-chat-panel');
-    panel.style.display = 'flex';
-    panel.style.flexDirection = 'column';
+function createChatSection() {
+    const section = el('div', 'stcm-chat-section');
+    section.style.display = 'flex';
+    section.style.flexDirection = 'column';
+    section.style.height = '100%';
 
     const chatLog = el('div', 'stcm-gw-log');
     chatLog.style.flex = '1';
     chatLog.style.overflowY = 'auto';
-    chatLog.style.marginBottom = '16px';
-    chatLog.style.border = '1px solid #444';
-    chatLog.style.borderRadius = '8px';
-    chatLog.style.padding = '16px';
+    chatLog.style.marginBottom = '12px';
+    chatLog.style.border = '1px solid var(--stcm-gw-border)';
+    chatLog.style.borderRadius = '6px';
+    chatLog.style.padding = '12px';
     chatLog.style.backgroundColor = '#1a1a1a';
+    chatLog.style.minHeight = '200px';
 
     const composer = el('div', 'stcm-gw-composer');
     composer.style.display = 'flex';
@@ -405,16 +449,21 @@ function createChatPanel() {
     composer.style.gap = '8px';
 
     const input = el('textarea', 'stcm-gw-ta');
-    input.style.minHeight = '80px';
+    input.style.minHeight = '60px';
     input.style.resize = 'vertical';
-    input.placeholder = 'Describe how you want to edit the selected fields...';
+    input.style.fontSize = '13px';
+    input.placeholder = 'Describe how to edit the selected fields...';
 
     const buttonRow = el('div', 'stcm-button-row');
     buttonRow.style.display = 'flex';
-    buttonRow.style.gap = '8px';
+    buttonRow.style.gap = '6px';
 
-    const sendBtn = mkBtn('Send to LLM', 'ok');
-    const regenBtn = mkBtn('Regenerate Last', 'info');
+    const sendBtn = mkBtn('Send', 'ok');
+    const regenBtn = mkBtn('Regen', 'info');
+    sendBtn.style.padding = '6px 12px';
+    sendBtn.style.fontSize = '12px';
+    regenBtn.style.padding = '6px 12px';
+    regenBtn.style.fontSize = '12px';
     
     sendBtn.addEventListener('click', () => onSendToLLM(false));
     regenBtn.addEventListener('click', () => onSendToLLM(true));
@@ -422,27 +471,67 @@ function createChatPanel() {
     buttonRow.append(sendBtn, regenBtn);
     composer.append(input, buttonRow);
 
-    // Store references for later use
-    panel.chatLog = chatLog;
-    panel.input = input;
-    panel.sendBtn = sendBtn;
-    panel.regenBtn = regenBtn;
-
-    panel.append(chatLog, composer);
-    return panel;
+    section.append(chatLog, composer);
+    return section;
 }
 
-function restoreUIFromState() {
-    if (!modal) return;
+function expandModalForFieldEditor(editModal) {
+    // Store original size for restoration
+    if (!editModal.dataset.originalWidth) {
+        const style = window.getComputedStyle(editModal);
+        editModal.dataset.originalWidth = style.width;
+        editModal.dataset.originalMaxWidth = style.maxWidth || '';
+    }
     
-    const chatLog = modal.querySelector('.stcm-gw-log');
+    // Expand the modal
+    editModal.style.width = 'min(1400px, 95vw)';
+    editModal.style.maxWidth = '95vw';
+}
+
+function restoreModalFromFieldEditor(editModal) {
+    // Restore original size
+    if (editModal.dataset.originalWidth) {
+        editModal.style.width = editModal.dataset.originalWidth;
+        editModal.style.maxWidth = editModal.dataset.originalMaxWidth || '';
+        
+        delete editModal.dataset.originalWidth;
+        delete editModal.dataset.originalMaxWidth;
+    }
+}
+
+function updateSidePanelCheckboxes() {
+    if (!currentCharacter) return;
+    
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    const panel = editModal?.querySelector('.stcm-field-editor-panel');
+    
+    if (!panel) return;
+
+    CHARACTER_FIELDS.forEach(field => {
+        const checkbox = panel.querySelector(`#field-${field.key}`);
+        if (checkbox) {
+            checkbox.checked = selectedFields.has(field.key);
+        }
+    });
+}
+
+
+
+function restoreUIFromState() {
+    if (!currentCharacter) return;
+    
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    const chatLog = editModal?.querySelector('.stcm-gw-log');
+    
     if (!chatLog) return;
 
     // Clear the DOM log
     chatLog.innerHTML = '';
 
     // Add initial message
-    appendBubble('assistant', 'Select the fields you want to edit from the left panel, then describe how you want to modify them.', { noActions: true });
+    appendBubble('assistant', 'Select the fields you want to edit, then describe how you want to modify them.', { noActions: true });
 
     // Restore saved turns
     for (const turn of miniTurns) {
@@ -453,7 +542,12 @@ function restoreUIFromState() {
 }
 
 function appendBubble(role, text, opts = {}) {
-    const chatLog = modal?.querySelector('.stcm-gw-log');
+    if (!currentCharacter) return;
+    
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    const chatLog = editModal?.querySelector('.stcm-gw-log');
+    
     if (!chatLog) return;
 
     const wrap = el('div', 'gw-row');
@@ -470,11 +564,15 @@ function appendBubble(role, text, opts = {}) {
     if (role === 'assistant' && !opts.noActions) {
         const bar = el('div', 'gw-action-bar');
         bar.style.display = 'flex';
-        bar.style.gap = '8px';
-        bar.style.marginTop = '8px';
+        bar.style.gap = '6px';
+        bar.style.marginTop = '6px';
 
-        const applyBtn = mkBtn('Apply Changes', 'warn');
+        const applyBtn = mkBtn('Apply', 'warn');
         const copyBtn = mkBtn('Copy', 'info');
+        applyBtn.style.fontSize = '11px';
+        applyBtn.style.padding = '3px 6px';
+        copyBtn.style.fontSize = '11px';
+        copyBtn.style.padding = '3px 6px';
 
         applyBtn.addEventListener('click', () => onApplyChanges(text));
         copyBtn.addEventListener('click', () => {
@@ -496,7 +594,12 @@ function appendBubble(role, text, opts = {}) {
 // LLM integration functions
 async function onSendToLLM(isRegen = false) {
     ensureCtx();
-    const input = modal?.querySelector('.stcm-gw-ta');
+    if (!currentCharacter) return;
+    
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    const input = editModal?.querySelector('.stcm-gw-ta');
+    
     if (!input) return;
 
     const userMessage = input.value.trim();
@@ -530,7 +633,7 @@ async function onSendToLLM(isRegen = false) {
     }
 
     // Show spinner
-    const chatLog = modal?.querySelector('.stcm-gw-log');
+    const chatLog = editModal?.querySelector('.stcm-gw-log');
     const spinner = document.createElement('div');
     spinner.textContent = isRegen ? 'Regenerating…' : 'Thinking…';
     Object.assign(spinner.style, { 
