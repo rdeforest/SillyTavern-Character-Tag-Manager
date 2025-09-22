@@ -460,15 +460,19 @@ function createChatSection() {
 
     const sendBtn = mkBtn('Send', 'ok');
     const regenBtn = mkBtn('Regen', 'info');
+    const clearBtn = mkBtn('Clear', 'warn');
     sendBtn.style.padding = '6px 12px';
     sendBtn.style.fontSize = '12px';
     regenBtn.style.padding = '6px 12px';
     regenBtn.style.fontSize = '12px';
+    clearBtn.style.padding = '6px 12px';
+    clearBtn.style.fontSize = '12px';
     
     sendBtn.addEventListener('click', () => onSendToLLM(false));
     regenBtn.addEventListener('click', () => onSendToLLM(true));
+    clearBtn.addEventListener('click', () => onClearConversation());
 
-    buttonRow.append(sendBtn, regenBtn);
+    buttonRow.append(sendBtn, regenBtn, clearBtn);
     composer.append(input, buttonRow);
 
     section.append(chatLog, composer);
@@ -589,6 +593,29 @@ function appendBubble(role, text, opts = {}) {
     chatLog.scrollTop = chatLog.scrollHeight;
 
     return wrap;
+}
+
+function onClearConversation() {
+    if (!currentCharacter) return;
+    
+    // Clear the conversation data
+    miniTurns = [];
+    
+    // Clear the UI
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    const chatLog = editModal?.querySelector('.stcm-gw-log');
+    
+    if (chatLog) {
+        chatLog.innerHTML = '';
+        // Add initial message
+        appendBubble('assistant', 'Select the fields you want to edit, then describe how you want to modify them.', { noActions: true });
+    }
+    
+    // Save the cleared state
+    saveSession();
+    
+    toastr.success('Conversation cleared');
 }
 
 // LLM integration functions
