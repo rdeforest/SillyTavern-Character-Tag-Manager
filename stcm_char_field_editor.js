@@ -613,49 +613,88 @@ async function callLLMForFieldEditing(userInstruction) {
     const systemPrompt = buildSystemPrompt();
     const temperature = Number(ctx?.extensionSettings?.memory?.temperature) || 0.7;
 
-    // Resolve API behavior
+    // Resolve API behavior (copied from greeting workshop)
     const apiInfo = resolveApiBehavior(profile);
     if (!apiInfo) {
         throw new Error('Could not resolve API configuration from the selected profile.');
     }
 
+    // Determine family
+    const family = profile.mode ? String(profile.mode).toLowerCase() : apiInfo.family;
+    
     let llmResponse = '';
 
     // Check if we're using chat completion or text completion
-    const isChatCompletion = (apiInfo.family === 'cc' || apiInfo.selected === 'openai');
+    const isChatCompletion = (family === 'cc' || apiInfo.selected === 'openai');
 
     if (isChatCompletion) {
-        // Chat completion pathway (OpenAI-style)
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userInstruction }
-        ];
+        // Chat completion pathway (OpenAI-style) using ChatCompletionService
+        const modelResolved = getModelFromContextByApi(profile) || profile.model || null;
+        const custom_url = profile['api-url'] || null;
+        const proxy = getProxyByName(profile.proxy);
+        const reverse_proxy = proxy?.url || null;
+        const proxy_password = proxy?.password || null;
+
+        // Get stop fields (similar to greeting workshop)
+        const instructGlobal = getGlobalInstructConfig();
+        const instructIsOnProfile = profileInstructEnabled(profile);
+        const hasInstructName = !!(profile?.instruct && String(profile.instruct).trim().length);
+        const instructEnabled = !!(instructGlobal?.enabled) || instructIsOnProfile || hasInstructName;
+        const { cfg: instructCfgRaw } = resolveEffectiveInstruct(profile);
+        const instructCfgEff = ensureKoboldcppInstruct(instructCfgRaw, apiInfo);
+        const stopFields = buildStopFields(apiInfo, profile, instructEnabled, instructCfgEff);
 
         const requestPayload = {
-            messages: messages,
-            model: profile.model || 'gpt-3.5-turbo',
-            temperature: temperature,
+            stream: false,
+            messages: [
+                { role: 'system', content: String(systemPrompt) },
+                { role: 'user', content: String(userInstruction) }
+            ],
+            chat_completion_source: apiInfo.source,
             max_tokens: 2048,
-            stream: false
+            temperature: temperature,
+            ...(stopFields),
+            ...(custom_url ? { custom_url } : {}),
+            ...(reverse_proxy ? { reverse_proxy } : {}),
+            ...(proxy_password ? { proxy_password } : {}),
+            ...(modelResolved ? { model: modelResolved } : {})
         };
 
-        const response = await fetch('/api/openai/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestPayload)
-        });
+        // Use ChatCompletionService instead of direct fetch
+        const ChatCompletionService = window.ChatCompletionService || 
+                                     ctx?.ChatCompletionService ||
+                                     SillyTavern?.ChatCompletionService;
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API request failed: ${response.status} ${errorText}`);
+        if (!ChatCompletionService) {
+            throw new Error('ChatCompletionService not available');
         }
 
-        const data = await response.json();
-        llmResponse = data.choices?.[0]?.message?.content || '';
+        const response = await ChatCompletionService.processRequest(
+            requestPayload,
+            {
+                presetName: profile.preset || undefined
+            },
+            true,
+            null
+        );
+
+        llmResponse = String(response?.content || '').trim();
 
     } else {
-        // Text completion pathway (TGW/Kobold/etc)
+        // Text completion pathway using TextCompletionService
+        const modelResolved = getModelFromContextByApi(profile) || profile.model || null;
+        const api_server = profile['api-url'] || null;
+        
         const prompt = `${systemPrompt}\n\nUser Request: ${userInstruction}\n\nResponse:`;
+
+        // Get stop fields and instruct config
+        const instructGlobal = getGlobalInstructConfig();
+        const instructIsOnProfile = profileInstructEnabled(profile);
+        const hasInstructName = !!(profile?.instruct && String(profile.instruct).trim().length);
+        const instructEnabled = !!(instructGlobal?.enabled) || instructIsOnProfile || hasInstructName;
+        const { cfg: instructCfgRaw, name: instructName } = resolveEffectiveInstruct(profile);
+        const instructCfgEff = ensureKoboldcppInstruct(instructCfgRaw, apiInfo);
+        const stopFields = buildStopFields(apiInfo, profile, instructEnabled, instructCfgEff);
 
         const requestPayload = {
             stream: false,
@@ -663,11 +702,12 @@ async function callLLMForFieldEditing(userInstruction) {
             max_tokens: 2048,
             temperature: temperature,
             api_type: apiInfo.api_type,
-            ...(profile['api-url'] ? { api_server: profile['api-url'] } : {}),
-            ...(profile.model ? { model: profile.model } : {})
+            ...(stopFields),
+            ...(api_server ? { api_server } : {}),
+            ...(modelResolved ? { model: modelResolved } : {})
         };
 
-        // Import TextCompletionService if available
+        // Use TextCompletionService instead of direct calls
         const TextCompletionService = window.TextCompletionService || 
                                      ctx?.TextCompletionService ||
                                      SillyTavern?.TextCompletionService;
@@ -679,7 +719,8 @@ async function callLLMForFieldEditing(userInstruction) {
         const response = await TextCompletionService.processRequest(
             requestPayload,
             {
-                presetName: profile.preset || undefined
+                presetName: profile.preset || undefined,
+                instructName: instructEnabled ? (instructName || 'effective') : undefined
             },
             true,
             null
@@ -710,6 +751,191 @@ function resolveApiBehavior(profile) {
         source: m.source,     // e.g., 'openai'
         button: m.button || null,
     };
+}
+
+// Helper functions from greeting workshop
+function getGlobalInstructConfig() {
+    ensureCtx();
+    return ctx?.extensionSettings?.instruct || ctx?.instruct || null;
+}
+
+function profileInstructEnabled(profile) {
+    return String(profile?.['instruct-state']).toLowerCase() === 'true';
+}
+
+function getProxyByName(name) {
+    ensureCtx();
+    const list = ctx?.proxies || window?.proxies || [];
+    if (!name || name === 'None') return null;
+    return Array.isArray(list) ? list.find(p => p.name === name) : null;
+}
+
+function resolveEffectiveInstruct(profile) {
+    ensureCtx();
+    const globalCfg = getGlobalInstructConfig() || {};
+    const instructName = (profile?.instruct || '').trim();
+    const presetName = (profile?.preset || '').trim();
+
+    let presetCfg = null;
+    const pick = (name) => {
+        if (!name) return null;
+        try {
+            const a = ctx?.extensionSettings?.instruct?.presets;
+            if (a && typeof a[name] === 'object') return a[name];
+            const b = ctx?.instruct?.presets;
+            if (b && typeof b[name] === 'object') return b[name];
+            const c = ctx?.presets;
+            if (c && typeof c[name]?.instruct === 'object') return c[name].instruct;
+            const d = ctx?.presets?.instruct;
+            if (d && typeof d[name] === 'object') return d[name];
+        } catch { }
+        return null;
+    };
+
+    presetCfg = pick(instructName) || pick(presetName);
+    const eff = Object.assign({}, globalCfg || {}, presetCfg || {});
+    const nameChosen = instructName || presetName || undefined;
+    return { cfg: eff, name: nameChosen };
+}
+
+function ensureKoboldcppInstruct(instructCfg, apiInfo) {
+    if (apiInfo?.api_type !== 'koboldcpp') return instructCfg || {};
+    const cfg = Object.assign({}, instructCfg || {});
+    const hasSeq = (k) => typeof cfg[k] === 'string' && cfg[k].length > 0;
+    if (hasSeq('system_sequence') && hasSeq('input_sequence') && hasSeq('output_sequence')) return cfg;
+    const fallback = {
+        system_sequence: '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>',
+        system_suffix: '<|END_OF_TURN_TOKEN|>',
+        input_sequence: '<|START_OF_TURN_TOKEN|><|USER_TOKEN|>',
+        input_suffix: '<|END_OF_TURN_TOKEN|>',
+        output_sequence: '<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>',
+        output_suffix: '<|END_OF_TURN_TOKEN|>',
+        stop_sequence: '<|END_OF_TURN_TOKEN|>',
+        system_sequence_prefix: '',
+        system_sequence_suffix: '',
+    };
+    return Object.assign({}, fallback, cfg);
+}
+
+function getProfileStops(profile) {
+    const raw = profile?.['stop-strings']; 
+    if (!raw) return [];
+    try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed.filter(s => typeof s === 'string' && s.length) : [];
+    } catch { 
+        console.warn('[STCM Field Editor] Could not parse profile stop-strings:', raw); 
+        return []; 
+    }
+}
+
+function mergeStops(...lists) {
+    const out = [];
+    for (const lst of lists) {
+        if (!lst) continue;
+        const arr = typeof lst === 'string' ? [lst] : lst;
+        if (Array.isArray(arr)) out.push(...arr);
+    }
+    return out;
+}
+
+function buildStopFields(apiInfo, profile, instructEnabled, instructCfgEff) {
+    const fromProfile = getProfileStops(profile);
+    const fromInstruct = (instructEnabled && instructCfgEff)
+        ? [instructCfgEff.stop_sequence, instructCfgEff.output_suffix]
+        : [];
+
+    const KCPP_DEFAULT_STOPS = [
+        '<|END_OF_TURN_TOKEN|>',
+        '<|START_OF_TURN_TOKEN|><|USER_TOKEN|>',
+        '<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>',
+        '<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>',
+        '<STOP>',
+    ];
+
+    // Merge profile + instruct
+    let merged = mergeStops(fromProfile, fromInstruct);
+
+    // If koboldcpp, ensure the full 5-token set is present
+    if (apiInfo?.api_type === 'koboldcpp') {
+        merged = mergeStops(merged, KCPP_DEFAULT_STOPS);
+    }
+
+    // Dedupe and strip empties
+    const unique = [];
+    for (const s of merged) {
+        if (typeof s === 'string' && s.length && !unique.includes(s)) unique.push(s);
+    }
+
+    // Return both keys to mirror "normal" payloads
+    return unique.length
+        ? { stop: unique, stopping_strings: unique }
+        : {};
+}
+
+function getModelFromContextByApi(profile) {
+    ensureCtx();
+    if (!profile || !profile.api) return null;
+    
+    try {
+        const canonProvider = String(profile.api || '').toLowerCase().trim();
+        const TAG = '[STCM Field Editor]';
+        
+        const containers = [
+            { name: 'ctx.online_status', obj: ctx?.online_status || {} },
+            { name: 'ctx.api_server_textgenerationwebui', obj: ctx?.api_server_textgenerationwebui || {} },
+            { name: 'ctx.koboldai_settings', obj: ctx?.koboldai_settings || {} },
+            { name: 'ctx.horde_settings', obj: ctx?.horde_settings || {} },
+            { name: 'ctx.mancer_settings', obj: ctx?.mancer_settings || {} },
+            { name: 'ctx.aphrodite_settings', obj: ctx?.aphrodite_settings || {} },
+            { name: 'ctx.tabby_settings', obj: ctx?.tabby_settings || {} },
+            { name: 'ctx.togetherai_settings', obj: ctx?.togetherai_settings || {} },
+            { name: 'ctx.infermaticai_settings', obj: ctx?.infermaticai_settings || {} },
+            { name: 'ctx.dreamgen_settings', obj: ctx?.dreamgen_settings || {} },
+            { name: 'ctx.openrouter_settings', obj: ctx?.openrouter_settings || {} },
+            { name: 'ctx.ai21_settings', obj: ctx?.ai21_settings || {} },
+            { name: 'ctx.makersuite_settings', obj: ctx?.makersuite_settings || {} },
+            { name: 'ctx.mistralai_settings', obj: ctx?.mistralai_settings || {} },
+            { name: 'ctx.custom_settings', obj: ctx?.custom_settings || {} },
+            { name: 'ctx.cohere_settings', obj: ctx?.cohere_settings || {} },
+            { name: 'ctx.perplexity_settings', obj: ctx?.perplexity_settings || {} },
+            { name: 'ctx.groq_settings', obj: ctx?.groq_settings || {} },
+        ];
+
+        function deepFind(obj, depth, path) {
+            if (depth > 10) return null;
+            if (!obj || typeof obj !== 'object') return null;
+            for (const pkey of ['model', 'model_textgenerationwebui', 'model_koboldai', 'selected_model']) {
+                if (obj.hasOwnProperty(pkey)) {
+                    const mv = obj[pkey];
+                    if (typeof mv === 'string' && mv.trim().length > 0) {
+                        const cleaned = mv.trim();
+                        console.log(`${TAG} FOUND ${path}.${pkey}.model =>`, cleaned);
+                        return cleaned;
+                    }
+                }
+            }
+            for (const k of Object.keys(obj)) {
+                const child = obj[k];
+                const childPath = `${path}.${k}`;
+                if (child && typeof child === 'object') {
+                    const found = deepFind(child, depth + 1, childPath);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+        for (const c of containers) {
+            const found = deepFind(c.obj, 0, c.name);
+            if (found) return found;
+        }
+
+        console.log(`${TAG} no model found for provider:`, canonProvider);
+        return null;
+    } catch (e) {
+        console.warn('[STCM Field Editor] getModelFromContextByApi error:', e);
+        return null;
+    }
 }
 
 async function onApplyChanges(responseText) {
