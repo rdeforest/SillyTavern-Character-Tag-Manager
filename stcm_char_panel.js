@@ -252,7 +252,10 @@ export function createEditSectionForCharacter(char) {
     metaFields.appendChild(renderField('Created by', char.data?.creator || '', 'data.creator', false));
     const creatorNotes = (char.data?.creator_notes || '').trim() || (char.creatorcomment || '').trim() || '';
     metaFields.appendChild(renderField("Creator's Notes", creatorNotes, 'unified.creator_notes'));
-    metaFields.appendChild(renderField('Tags to Embed (comma-separated)', (char.data?.tags || []).join(', '), 'data.tags'));
+    
+    // Ensure tags is always an array before calling join
+    const tagsArray = Array.isArray(char.data?.tags) ? char.data.tags : [];
+    metaFields.appendChild(renderField('Tags to Embed (comma-separated)', tagsArray.join(', '), 'data.tags'));
 
     // === Save Button
     const btnRow = document.createElement('div');
