@@ -28,7 +28,8 @@ const CHARACTER_FIELDS = [
 let currentCharacter = null;
 let modal = null;
 let overlay = null;
-let selectedFields = new Set();
+let selectedFields = new Set(); // Fields to edit
+let contextFields = new Set();  // Fields to include as context
 let miniTurns = [];
 
 // Persist per character so sessions don't collide
@@ -41,6 +42,7 @@ function saveSession() {
     try {
         const state = {
             selectedFields: Array.from(selectedFields),
+            contextFields: Array.from(contextFields),
             miniTurns: miniTurns
         };
         localStorage.setItem(STATE_KEY(), JSON.stringify(state));
@@ -55,11 +57,13 @@ function loadSession() {
         if (stored) {
             const state = JSON.parse(stored);
             selectedFields = new Set(state.selectedFields || []);
+            contextFields = new Set(state.contextFields || []);
             miniTurns = state.miniTurns || [];
         }
     } catch (e) {
         console.warn('[STCM Field Editor] Load session failed:', e);
         selectedFields = new Set();
+        contextFields = new Set();
         miniTurns = [];
     }
 }
@@ -72,6 +76,7 @@ function clearWorkshopState() {
 
     miniTurns = [];
     selectedFields = new Set();
+    contextFields = new Set();
 
     if (modal && modal.parentNode) {
         modal.remove();
@@ -135,15 +140,22 @@ function buildSystemPrompt() {
         return field ? field.label : key;
     }).join(', ');
 
+    const contextFieldsList = Array.from(contextFields).map(key => {
+        const field = CHARACTER_FIELDS.find(f => f.key === key);
+        return field ? field.label : key;
+    }).join(', ');
+
     const currentData = buildCharacterData();
 
     return [
         `You are a Character Development Assistant helping to edit character card fields for "${charName}".`,
         '',
         `FIELDS TO EDIT: ${selectedFieldsList}`,
+        contextFields.size > 0 ? `CONTEXT FIELDS (reference only): ${contextFieldsList}` : '',
         '',
         'INSTRUCTIONS:',
         '• Read the user\'s request carefully and edit ONLY the requested fields',
+        '• Use the context fields for reference and consistency, but do NOT modify them',
         '• Maintain character consistency across all fields',
         '• Keep the character\'s core personality and voice intact unless specifically asked to change it',
         '• For character descriptions, be detailed but not overly verbose',
@@ -165,7 +177,7 @@ function buildSystemPrompt() {
         'CRITICAL RULES:',
         '• Return ONLY the JSON object - no explanations, no markdown formatting, no additional text',
         '• Do NOT wrap the JSON in code blocks (```json or ```)',
-        '• Include ONLY the fields that are being edited',
+        '• Include ONLY the fields that are being edited (not context fields)',
         '• Ensure all JSON strings are properly escaped',
         '• If editing dialogue examples, use proper dialogue formatting with quotes and actions',
         '• Maintain appropriate content rating and avoid inappropriate content',
@@ -331,25 +343,29 @@ function createFieldEditorPanel() {
 
 function createFieldSelectionSection() {
     const section = el('div', 'stcm-field-selection-section');
+    section.style.borderBottom = '1px solid #444';
+    section.style.paddingBottom = '12px';
+    section.style.marginBottom = '12px';
 
-    const title = el('h4', null, 'Select Fields to Edit');
-    title.style.margin = '0 0 12px 0';
-    title.style.fontSize = '14px';
-    title.style.color = '#aaa';
+    // Fields to Edit section
+    const editTitle = el('h4', null, 'Fields to Edit');
+    editTitle.style.margin = '0 0 8px 0';
+    editTitle.style.fontSize = '14px';
+    editTitle.style.color = '#fff';
 
-    const controls = el('div', 'stcm-field-controls');
-    controls.style.marginBottom = '12px';
-    controls.style.display = 'flex';
-    controls.style.gap = '6px';
+    const editControls = el('div', 'stcm-field-controls');
+    editControls.style.marginBottom = '8px';
+    editControls.style.display = 'flex';
+    editControls.style.gap = '6px';
 
-    const selectAllBtn = mkBtn('All', 'info');
-    const selectNoneBtn = mkBtn('None', 'ghost');
-    selectAllBtn.style.padding = '4px 8px';
-    selectAllBtn.style.fontSize = '12px';
-    selectNoneBtn.style.padding = '4px 8px';
-    selectNoneBtn.style.fontSize = '12px';
+    const editAllBtn = mkBtn('All', 'info');
+    const editNoneBtn = mkBtn('None', 'ghost');
+    editAllBtn.style.padding = '3px 6px';
+    editAllBtn.style.fontSize = '11px';
+    editNoneBtn.style.padding = '3px 6px';
+    editNoneBtn.style.fontSize = '11px';
 
-    selectAllBtn.addEventListener('click', () => {
+    editAllBtn.addEventListener('click', () => {
         CHARACTER_FIELDS.forEach(field => {
             if (!field.readonly) selectedFields.add(field.key);
         });
@@ -357,74 +373,112 @@ function createFieldSelectionSection() {
         saveSession();
     });
 
-    selectNoneBtn.addEventListener('click', () => {
+    editNoneBtn.addEventListener('click', () => {
         selectedFields.clear();
         updateSidePanelCheckboxes();
         saveSession();
     });
 
-    controls.append(selectAllBtn, selectNoneBtn);
+    editControls.append(editAllBtn, editNoneBtn);
 
-    const fieldList = el('div', 'stcm-field-list');
-    fieldList.style.maxHeight = '200px';
-    fieldList.style.overflowY = 'auto';
-    
-    // Group fields by category with simplified display
-    const categories = [
-        { key: 'basics', label: 'Basic Fields', fields: CHARACTER_FIELDS.filter(f => f.category === 'basics') },
-        { key: 'advanced', label: 'Advanced', fields: CHARACTER_FIELDS.filter(f => f.category === 'advanced') },
-        { key: 'metadata', label: 'Metadata', fields: CHARACTER_FIELDS.filter(f => f.category === 'metadata') }
-    ];
+    const editFieldList = el('div', 'stcm-edit-field-list');
+    editFieldList.style.maxHeight = '120px';
+    editFieldList.style.overflowY = 'auto';
+    editFieldList.style.marginBottom = '16px';
 
-    categories.forEach(category => {
-        if (category.fields.length === 0) return;
+    // Context Fields section
+    const contextTitle = el('h4', null, 'Context Fields (reference only)');
+    contextTitle.style.margin = '0 0 8px 0';
+    contextTitle.style.fontSize = '14px';
+    contextTitle.style.color = '#aaa';
 
-        const categoryTitle = el('div', 'stcm-field-category-title');
-        categoryTitle.textContent = category.label;
-        categoryTitle.style.fontSize = '12px';
-        categoryTitle.style.fontWeight = '600';
-        categoryTitle.style.color = '#888';
-        categoryTitle.style.marginTop = '8px';
-        categoryTitle.style.marginBottom = '4px';
-        fieldList.appendChild(categoryTitle);
+    const contextControls = el('div', 'stcm-context-controls');
+    contextControls.style.marginBottom = '8px';
+    contextControls.style.display = 'flex';
+    contextControls.style.gap = '6px';
 
-        category.fields.forEach(field => {
-            const fieldRow = el('div', 'stcm-field-row');
-            fieldRow.style.display = 'flex';
-            fieldRow.style.alignItems = 'center';
-            fieldRow.style.marginBottom = '4px';
-            fieldRow.style.gap = '6px';
-            fieldRow.style.fontSize = '13px';
+    const contextAllBtn = mkBtn('All', 'info');
+    const contextNoneBtn = mkBtn('None', 'ghost');
+    contextAllBtn.style.padding = '3px 6px';
+    contextAllBtn.style.fontSize = '11px';
+    contextNoneBtn.style.padding = '3px 6px';
+    contextNoneBtn.style.fontSize = '11px';
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `field-${field.key}`;
-            checkbox.disabled = field.readonly;
-            checkbox.checked = selectedFields.has(field.key);
-            
-            checkbox.addEventListener('change', () => {
-                if (checkbox.checked) {
-                    selectedFields.add(field.key);
-                } else {
-                    selectedFields.delete(field.key);
-                }
-                saveSession();
-            });
-
-            const label = document.createElement('label');
-            label.htmlFor = `field-${field.key}`;
-            label.style.cursor = field.readonly ? 'default' : 'pointer';
-            label.style.flex = '1';
-            label.style.fontSize = '13px';
-            label.textContent = field.label;
-            
-            fieldRow.append(checkbox, label);
-            fieldList.appendChild(fieldRow);
+    contextAllBtn.addEventListener('click', () => {
+        CHARACTER_FIELDS.forEach(field => {
+            if (!field.readonly) contextFields.add(field.key);
         });
+        updateSidePanelCheckboxes();
+        saveSession();
     });
 
-    section.append(title, controls, fieldList);
+    contextNoneBtn.addEventListener('click', () => {
+        contextFields.clear();
+        updateSidePanelCheckboxes();
+        saveSession();
+    });
+
+    contextControls.append(contextAllBtn, contextNoneBtn);
+
+    const contextFieldList = el('div', 'stcm-context-field-list');
+    contextFieldList.style.maxHeight = '120px';
+    contextFieldList.style.overflowY = 'auto';
+
+    // Create field checkboxes for both lists
+    CHARACTER_FIELDS.forEach(field => {
+        if (field.readonly) return;
+
+        // Edit field checkbox
+        const editRow = createFieldCheckbox(field, 'edit');
+        editFieldList.appendChild(editRow);
+
+        // Context field checkbox  
+        const contextRow = createFieldCheckbox(field, 'context');
+        contextFieldList.appendChild(contextRow);
+    });
+
+    section.append(
+        editTitle, 
+        editControls, 
+        editFieldList,
+        contextTitle, 
+        contextControls, 
+        contextFieldList
+    );
     return section;
+}
+
+function createFieldCheckbox(field, type) {
+    const row = el('div', 'stcm-field-row');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.marginBottom = '4px';
+    row.style.gap = '6px';
+    row.style.fontSize = '12px';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `field-${type}-${field.key}`;
+    checkbox.checked = type === 'edit' ? selectedFields.has(field.key) : contextFields.has(field.key);
+    
+    checkbox.addEventListener('change', () => {
+        const targetSet = type === 'edit' ? selectedFields : contextFields;
+        if (checkbox.checked) {
+            targetSet.add(field.key);
+        } else {
+            targetSet.delete(field.key);
+        }
+        saveSession();
+    });
+
+    const label = document.createElement('label');
+    label.htmlFor = `field-${type}-${field.key}`;
+    label.style.cursor = 'pointer';
+    label.style.flex = '1';
+    label.textContent = field.label;
+
+    row.append(checkbox, label);
+    return row;
 }
 
 function createChatSection() {
@@ -513,9 +567,16 @@ function updateSidePanelCheckboxes() {
     if (!panel) return;
 
     CHARACTER_FIELDS.forEach(field => {
-        const checkbox = panel.querySelector(`#field-${field.key}`);
-        if (checkbox) {
-            checkbox.checked = selectedFields.has(field.key);
+        // Update edit checkboxes
+        const editCheckbox = panel.querySelector(`#field-edit-${field.key}`);
+        if (editCheckbox) {
+            editCheckbox.checked = selectedFields.has(field.key);
+        }
+        
+        // Update context checkboxes
+        const contextCheckbox = panel.querySelector(`#field-context-${field.key}`);
+        if (contextCheckbox) {
+            contextCheckbox.checked = contextFields.has(field.key);
         }
     });
 }
@@ -535,7 +596,7 @@ function restoreUIFromState() {
     chatLog.innerHTML = '';
 
     // Add initial message
-    appendBubble('assistant', 'Select the fields you want to edit, then describe how you want to modify them.', { noActions: true });
+    appendBubble('assistant', 'Select fields to edit and optional context fields for reference, then describe how you want to modify them.', { noActions: true });
 
     // Restore saved turns
     for (const turn of miniTurns) {
@@ -609,7 +670,7 @@ function onClearConversation() {
     if (chatLog) {
         chatLog.innerHTML = '';
         // Add initial message
-        appendBubble('assistant', 'Select the fields you want to edit, then describe how you want to modify them.', { noActions: true });
+        appendBubble('assistant', 'Select fields to edit and optional context fields for reference, then describe how you want to modify them.', { noActions: true });
     }
     
     // Save the cleared state
