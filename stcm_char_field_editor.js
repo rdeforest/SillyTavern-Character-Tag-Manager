@@ -653,8 +653,9 @@ function appendBubble(role, text, opts = {}) {
 
         applyBtn.addEventListener('click', () => onApplyChanges(text));
         copyBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(text);
-            toastr.success('Copied to clipboard');
+            const formattedText = formatJsonToText(text);
+            navigator.clipboard.writeText(formattedText);
+            toastr.success('Copied formatted text to clipboard');
         });
 
         bar.append(applyBtn, copyBtn);
@@ -709,9 +710,6 @@ function formatJsonResponse(text) {
             if (typeof value === 'string') {
                 // Replace newlines and format dialogue examples nicely
                 displayValue = value
-                    .replace(/<START>/g, '\n🎬 START\n')
-                    .replace(/{{char}}:/g, '🎭 Character:')
-                    .replace(/{{user}}:/g, '👤 User:')
                     .trim();
             }
             
@@ -725,6 +723,39 @@ function formatJsonResponse(text) {
     } catch (e) {
         // If it's not valid JSON, return null to fall back to plain text
         return null;
+    }
+}
+
+function formatJsonToText(text) {
+    try {
+        const parsed = JSON.parse(text);
+        let formattedText = '';
+        
+        Object.entries(parsed).forEach(([key, value], index) => {
+            const field = CHARACTER_FIELDS.find(f => f.key === key);
+            const fieldName = field ? field.label : key;
+            
+            if (index > 0) formattedText += '\n\n';
+            formattedText += `=== ${fieldName.toUpperCase()} ===\n`;
+            
+            // Format the content nicely for copying
+            let displayValue = value;
+            if (typeof value === 'string') {
+                // Clean up formatting for text copying
+                displayValue = value
+                    .replace(/<START>/g, '\n--- START ---\n')
+                    .replace(/{{char}}:/g, 'Character:')
+                    .replace(/{{user}}:/g, 'User:')
+                    .trim();
+            }
+            
+            formattedText += displayValue;
+        });
+        
+        return formattedText;
+    } catch (e) {
+        // If it's not valid JSON, return the original text
+        return text;
     }
 }
 
