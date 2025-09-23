@@ -621,7 +621,18 @@ function appendBubble(role, text, opts = {}) {
 
     const bubble = el('div', `gw-bubble gw-bubble--${role}`);
     const content = el('div', 'gw-content');
-    content.textContent = text;
+    
+    // Check if this is a JSON response and format it nicely
+    if (role === 'assistant' && !opts.noActions) {
+        const formattedJson = formatJsonResponse(text);
+        if (formattedJson) {
+            content.appendChild(formattedJson);
+        } else {
+            content.textContent = text;
+        }
+    } else {
+        content.textContent = text;
+    }
 
     bubble.appendChild(content);
 
@@ -654,6 +665,66 @@ function appendBubble(role, text, opts = {}) {
     chatLog.scrollTop = chatLog.scrollHeight;
 
     return wrap;
+}
+
+function formatJsonResponse(text) {
+    try {
+        const parsed = JSON.parse(text);
+        
+        // Create a formatted display
+        const container = el('div', 'json-response');
+        container.style.fontFamily = 'monospace';
+        container.style.backgroundColor = '#222';
+        container.style.border = '1px solid #444';
+        container.style.borderRadius = '4px';
+        container.style.padding = '12px';
+        container.style.margin = '4px 0';
+        
+        Object.entries(parsed).forEach(([key, value]) => {
+            const field = CHARACTER_FIELDS.find(f => f.key === key);
+            const fieldName = field ? field.label : key;
+            
+            const fieldDiv = el('div', 'json-field');
+            fieldDiv.style.marginBottom = '12px';
+            fieldDiv.style.borderBottom = '1px solid #333';
+            fieldDiv.style.paddingBottom = '8px';
+            
+            const fieldHeader = el('div', 'json-field-header');
+            fieldHeader.style.color = '#4a9eff';
+            fieldHeader.style.fontWeight = 'bold';
+            fieldHeader.style.marginBottom = '6px';
+            fieldHeader.style.fontSize = '13px';
+            fieldHeader.textContent = `📝 ${fieldName}`;
+            
+            const fieldContent = el('div', 'json-field-content');
+            fieldContent.style.color = '#ddd';
+            fieldContent.style.fontSize = '12px';
+            fieldContent.style.lineHeight = '1.4';
+            fieldContent.style.whiteSpace = 'pre-wrap';
+            fieldContent.style.paddingLeft = '16px';
+            
+            // Format the content nicely
+            let displayValue = value;
+            if (typeof value === 'string') {
+                // Replace newlines and format dialogue examples nicely
+                displayValue = value
+                    .replace(/<START>/g, '\n🎬 START\n')
+                    .replace(/{{char}}:/g, '🎭 Character:')
+                    .replace(/{{user}}:/g, '👤 User:')
+                    .trim();
+            }
+            
+            fieldContent.textContent = displayValue;
+            
+            fieldDiv.append(fieldHeader, fieldContent);
+            container.appendChild(fieldDiv);
+        });
+        
+        return container;
+    } catch (e) {
+        // If it's not valid JSON, return null to fall back to plain text
+        return null;
+    }
 }
 
 function onClearConversation() {
