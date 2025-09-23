@@ -51,6 +51,7 @@ function saveSession() {
     }
 }
 
+
 function loadSession() {
     try {
         const stored = localStorage.getItem(STATE_KEY());
