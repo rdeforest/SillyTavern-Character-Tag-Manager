@@ -112,18 +112,34 @@ function spacer() {
 // Get field value from character object using dot notation
 function getFieldValue(char, fieldKey) {
     if (fieldKey === 'alternate_greetings') {
-        // Handle alternate greetings as array
+        // Handle alternate greetings as array, extracting .mes property if objects
         const greetings = char?.alternate_greetings || [];
-        return Array.isArray(greetings) ? greetings.join('\n\n---\n\n') : '';
+        if (!Array.isArray(greetings)) return '';
+        
+        const messages = greetings.map(greeting => {
+            if (typeof greeting === 'object' && greeting.mes !== undefined) {
+                return greeting.mes;
+            }
+            return greeting || '';
+        });
+        
+        return messages.join('\n\n---\n\n');
     }
     
-    // Handle individual alternate greetings
+    // Handle individual alternate greetings and their mes property
     if (fieldKey.startsWith('alternate_greetings[')) {
-        const match = fieldKey.match(/alternate_greetings\[(\d+)\]/);
+        const match = fieldKey.match(/alternate_greetings\[(\d+)\](?:\.mes)?/);
         if (match) {
             const index = parseInt(match[1]);
             const greetings = char?.alternate_greetings || [];
-            return greetings[index] || '';
+            const greeting = greetings[index];
+            
+            // If accessing .mes property or the greeting is an object with mes
+            if (fieldKey.includes('.mes') || (greeting && typeof greeting === 'object' && greeting.mes !== undefined)) {
+                return greeting?.mes || '';
+            }
+            // Otherwise return the full greeting (backward compatibility)
+            return greeting || '';
         }
     }
     
@@ -138,19 +154,41 @@ function getFieldValue(char, fieldKey) {
 // Set field value in character object using dot notation
 function setFieldValue(char, fieldKey, newValue) {
     if (fieldKey === 'alternate_greetings') {
-        // Handle alternate greetings as array
-        const greetings = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
+        // Handle alternate greetings as array, creating objects with .mes property
+        const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
+        const greetings = messages.map(mes => ({ mes }));
         char.alternate_greetings = greetings;
         return;
     }
     
-    // Handle individual alternate greetings
+    // Handle individual alternate greetings and their mes property
     if (fieldKey.startsWith('alternate_greetings[')) {
-        const match = fieldKey.match(/alternate_greetings\[(\d+)\]/);
+        const match = fieldKey.match(/alternate_greetings\[(\d+)\](?:\.mes)?/);
         if (match) {
             const index = parseInt(match[1]);
             if (!char.alternate_greetings) char.alternate_greetings = [];
-            char.alternate_greetings[index] = newValue;
+            
+            // Ensure the greeting object exists
+            if (!char.alternate_greetings[index]) {
+                char.alternate_greetings[index] = { mes: '' };
+            }
+            
+            // If accessing .mes property specifically
+            if (fieldKey.includes('.mes')) {
+                // Ensure it's an object with mes property
+                if (typeof char.alternate_greetings[index] === 'string') {
+                    char.alternate_greetings[index] = { mes: char.alternate_greetings[index] };
+                }
+                char.alternate_greetings[index].mes = newValue;
+            } else {
+                // Backward compatibility: set the whole greeting
+                // If it's meant to be an object, create it with mes property
+                if (newValue && typeof newValue === 'string') {
+                    char.alternate_greetings[index] = { mes: newValue };
+                } else {
+                    char.alternate_greetings[index] = newValue;
+                }
+            }
             return;
         }
     }
@@ -199,7 +237,9 @@ function buildSystemPrompt() {
         '• For scenarios, set up engaging situations that showcase the character',
         '• For dialogue examples, match the character\'s speaking style and personality',
         '• For first messages, create engaging opening scenes that draw the user in',
-        '• For alternate greetings, create varied opening scenarios separated by "\\n\\n---\\n\\n"',
+        '• For alternate greetings (bulk), create varied opening scenarios separated by "\\n\\n---\\n\\n"',
+        '• For individual alternate greeting messages (alternate_greetings[0].mes, etc.), edit specific greeting text',
+        '• When creating new alternate greetings, they will be formatted as objects with "mes" property',
         '',
         'RESPONSE FORMAT:',
         'Return ONLY a valid JSON object with the field keys and new values. Use the exact field keys shown in the current data below.',
@@ -209,7 +249,9 @@ function buildSystemPrompt() {
         '  "description": "New description text...",',
         '  "personality": "Updated personality traits...",',
         '  "scenario": "New scenario setup...",',
-        '  "alternate_greetings": "First greeting...\\n\\n---\\n\\nSecond greeting..."',
+        '  "alternate_greetings": "First greeting...\\n\\n---\\n\\nSecond greeting...",',
+        '  "alternate_greetings[0].mes": "Specific message for first greeting...",',
+        '  "alternate_greetings[1].mes": "Specific message for second greeting..."',
         '}',
         '',
         'CRITICAL RULES:',
@@ -479,6 +521,7 @@ function createFieldSelectionSection() {
     if (currentCharacter?.alternate_greetings?.length > 0) {
         currentCharacter.alternate_greetings.forEach((greeting, index) => {
             const fieldKey = `alternate_greetings[${index}]`;
+            const mesFieldKey = `alternate_greetings[${index}].mes`;
             const dynamicField = {
                 key: fieldKey,
                 label: `Alternate Greeting ${index + 1}`,
@@ -487,15 +530,50 @@ function createFieldSelectionSection() {
                 readonly: false,
                 isDynamic: true
             };
+            
+            const mesField = {
+                key: mesFieldKey,
+                label: `Alternate Greeting ${index + 1} Message`,
+                multiline: true,
+                category: 'basics',
+                readonly: false,
+                isDynamic: true
+            };
 
-            // Edit field checkbox
+            // Edit field checkbox for full greeting object
             const editRow = createFieldCheckbox(dynamicField, 'edit');
             editFieldList.appendChild(editRow);
+            
+            // Edit field checkbox for just the message
+            const mesEditRow = createFieldCheckbox(mesField, 'edit');
+            editFieldList.appendChild(mesEditRow);
 
-            // Context field checkbox  
+            // Context field checkbox for full greeting object  
             const contextRow = createFieldCheckbox(dynamicField, 'context');
             contextFieldList.appendChild(contextRow);
+            
+            // Context field checkbox for just the message
+            const mesContextRow = createFieldCheckbox(mesField, 'context');
+            contextFieldList.appendChild(mesContextRow);
         });
+    } else {
+        // If no alternate greetings exist, provide option to create the first one
+        const newGreetingField = {
+            key: 'alternate_greetings[0].mes',
+            label: 'Create First Alternate Greeting',
+            multiline: true,
+            category: 'basics',
+            readonly: false,
+            isDynamic: true
+        };
+        
+        // Edit field checkbox for creating new greeting
+        const newEditRow = createFieldCheckbox(newGreetingField, 'edit');
+        editFieldList.appendChild(newEditRow);
+        
+        // Context field checkbox for creating new greeting
+        const newContextRow = createFieldCheckbox(newGreetingField, 'context');
+        contextFieldList.appendChild(newContextRow);
     }
 
     section.append(
