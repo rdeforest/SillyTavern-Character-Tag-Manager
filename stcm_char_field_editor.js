@@ -870,9 +870,6 @@ function formatJsonResponse(text) {
                 } else {
                     // Replace newlines and format dialogue examples nicely
                     displayValue = value
-                        .replace(/<START>/g, '\n🎬 START\n')
-                        .replace(/{{char}}:/g, '🎭 Character:')
-                        .replace(/{{user}}:/g, '👤 User:')
                         .trim();
                 }
             }
@@ -911,9 +908,6 @@ function formatJsonToText(text) {
                 } else {
                     // Clean up formatting for text copying
                     displayValue = value
-                        .replace(/<START>/g, '\n--- START ---\n')
-                        .replace(/{{char}}:/g, 'Character:')
-                        .replace(/{{user}}:/g, 'User:')
                         .trim();
                 }
             }
