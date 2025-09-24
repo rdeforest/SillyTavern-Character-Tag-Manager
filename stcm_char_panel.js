@@ -71,26 +71,23 @@ export function createEditSectionForCharacter(char) {
         const checkboxContainer = document.createElement('div');
         checkboxContainer.className = 'stcm-field-checkboxes';
         checkboxContainer.style.cssText = `
-            display: flex;
-            flex-direction: column;
+            display: none;
+            flex-direction: row;
             align-items: center;
-            margin-left: 8px;
-            min-width: 32px;
-            gap: 2px;
+            margin-left: 12px;
+            gap: 8px;
         `;
 
         if (!readonly) {
-            // Header with icons
-            const iconHeader = document.createElement('div');
-            iconHeader.style.cssText = `
+            // Edit checkbox with icon
+            const editWrapper = document.createElement('div');
+            editWrapper.style.cssText = `
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 gap: 2px;
-                margin-bottom: 4px;
             `;
 
-            // Edit icon (pencil)
             const editIcon = document.createElement('div');
             editIcon.style.cssText = `
                 font-size: 12px;
@@ -101,29 +98,6 @@ export function createEditSectionForCharacter(char) {
             editIcon.textContent = '✏️';
             editIcon.title = 'Edit';
 
-            // Context icon (book)
-            const contextIcon = document.createElement('div');
-            contextIcon.style.cssText = `
-                font-size: 12px;
-                color: #ffaa4a;
-                cursor: default;
-                user-select: none;
-            `;
-            contextIcon.textContent = '📖';
-            contextIcon.title = 'Context';
-
-            iconHeader.append(editIcon, contextIcon);
-
-            // Checkbox column
-            const checkboxColumn = document.createElement('div');
-            checkboxColumn.style.cssText = `
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 2px;
-            `;
-            
-            // Edit checkbox
             const editCheck = document.createElement('input');
             editCheck.type = 'checkbox';
             editCheck.id = `stcm-edit-${path.replace(/\./g, '-')}`;
@@ -142,7 +116,27 @@ export function createEditSectionForCharacter(char) {
                 }
             });
 
-            // Context checkbox
+            editWrapper.append(editIcon, editCheck);
+
+            // Context checkbox with icon
+            const contextWrapper = document.createElement('div');
+            contextWrapper.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2px;
+            `;
+
+            const contextIcon = document.createElement('div');
+            contextIcon.style.cssText = `
+                font-size: 12px;
+                color: #ffaa4a;
+                cursor: default;
+                user-select: none;
+            `;
+            contextIcon.textContent = '📖';
+            contextIcon.title = 'Context';
+
             const contextCheck = document.createElement('input');
             contextCheck.type = 'checkbox';
             contextCheck.id = `stcm-context-${path.replace(/\./g, '-')}`;
@@ -161,8 +155,8 @@ export function createEditSectionForCharacter(char) {
                 }
             });
 
-            checkboxColumn.append(editCheck, contextCheck);
-            checkboxContainer.append(iconHeader, checkboxColumn);
+            contextWrapper.append(contextIcon, contextCheck);
+            checkboxContainer.append(editWrapper, contextWrapper);
         }
 
         row.appendChild(lbl);
@@ -294,65 +288,32 @@ export function createEditSectionForCharacter(char) {
             const checkboxContainer = document.createElement('div');
             checkboxContainer.className = 'stcm-alt-field-checkboxes';
             checkboxContainer.style.cssText = `
-                display: flex;
-                flex-direction: column;
+                display: none;
+                flex-direction: row;
                 align-items: center;
-                min-width: 32px;
-                gap: 2px;
+                margin-left: 12px;
+                gap: 8px;
             `;
 
-            // Header with icons (only show once for first greeting)
-            if (idx === 0) {
-                const iconHeader = document.createElement('div');
-                iconHeader.style.cssText = `
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 2px;
-                    margin-bottom: 4px;
-                `;
-
-                // Edit icon (pencil)
-                const editIcon = document.createElement('div');
-                editIcon.style.cssText = `
-                    font-size: 12px;
-                    color: #4a9eff;
-                    cursor: default;
-                    user-select: none;
-                `;
-                editIcon.textContent = '✏️';
-                editIcon.title = 'Edit';
-
-                // Context icon (book)
-                const contextIcon = document.createElement('div');
-                contextIcon.style.cssText = `
-                    font-size: 12px;
-                    color: #ffaa4a;
-                    cursor: default;
-                    user-select: none;
-                `;
-                contextIcon.textContent = '📖';
-                contextIcon.title = 'Context';
-
-                iconHeader.append(editIcon, contextIcon);
-                checkboxContainer.appendChild(iconHeader);
-            } else {
-                // Add spacer for alignment with first greeting
-                const spacer = document.createElement('div');
-                spacer.style.height = '28px'; // Match icon header height
-                checkboxContainer.appendChild(spacer);
-            }
-
-            // Checkbox column
-            const checkboxColumn = document.createElement('div');
-            checkboxColumn.style.cssText = `
+            // Edit checkbox with icon
+            const editWrapper = document.createElement('div');
+            editWrapper.style.cssText = `
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 gap: 2px;
             `;
-            
-            // Edit checkbox (for the greeting message)
+
+            const editIcon = document.createElement('div');
+            editIcon.style.cssText = `
+                font-size: 12px;
+                color: #4a9eff;
+                cursor: default;
+                user-select: none;
+            `;
+            editIcon.textContent = '✏️';
+            editIcon.title = 'Edit';
+
             const editCheck = document.createElement('input');
             editCheck.type = 'checkbox';
             editCheck.id = `stcm-edit-alternate_greetings-${idx}`;
@@ -371,7 +332,27 @@ export function createEditSectionForCharacter(char) {
                 }
             });
 
-            // Context checkbox (for the greeting message)
+            editWrapper.append(editIcon, editCheck);
+
+            // Context checkbox with icon
+            const contextWrapper = document.createElement('div');
+            contextWrapper.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2px;
+            `;
+
+            const contextIcon = document.createElement('div');
+            contextIcon.style.cssText = `
+                font-size: 12px;
+                color: #ffaa4a;
+                cursor: default;
+                user-select: none;
+            `;
+            contextIcon.textContent = '📖';
+            contextIcon.title = 'Context';
+
             const contextCheck = document.createElement('input');
             contextCheck.type = 'checkbox';
             contextCheck.id = `stcm-context-alternate_greetings-${idx}`;
@@ -390,8 +371,8 @@ export function createEditSectionForCharacter(char) {
                 }
             });
 
-            checkboxColumn.append(editCheck, contextCheck);
-            checkboxContainer.appendChild(checkboxColumn);
+            contextWrapper.append(contextIcon, contextCheck);
+            checkboxContainer.append(editWrapper, contextWrapper);
 
             const del = document.createElement('button');
             del.className = 'stcm_menu_button small';

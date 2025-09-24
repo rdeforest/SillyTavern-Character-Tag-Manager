@@ -619,6 +619,9 @@ font-size: .9em;
 }
 
 /* Container for the edit panel below each character */
+.stcmCharEditModal {
+    resize: both;
+}
 .charEditSection {
     width: 100%;
     box-sizing: border-box;
@@ -630,6 +633,10 @@ font-size: .9em;
     flex-direction: column;
     margin-bottom: 6px;
     width: 100%;
+}
+
+.stcm-edit-checkbox {
+    resize: none;
 }
 
 /* Labels */

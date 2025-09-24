@@ -336,6 +336,9 @@ function openFieldEditor(character) {
         
         // Expand the modal to accommodate the side panel
         expandModalForFieldEditor(editModal);
+        
+        // Show checkboxes when field editor opens
+        toggleFieldEditorCheckboxes(editModal, true);
     }
 
     // Add event listener for field selection sync
@@ -416,6 +419,9 @@ function closeFieldEditor() {
             
             // Restore modal size
             restoreModalFromFieldEditor(editModal);
+            
+            // Hide checkboxes when field editor closes
+            toggleFieldEditorCheckboxes(editModal, false);
         }
     }
     
@@ -423,6 +429,16 @@ function closeFieldEditor() {
     currentCharacter = null;
     selectedFields = new Set();
     miniTurns = [];
+}
+
+// Toggle visibility of field editor checkboxes
+function toggleFieldEditorCheckboxes(modal, show) {
+    if (!modal) return;
+    
+    const checkboxContainers = modal.querySelectorAll('.stcm-field-checkboxes, .stcm-alt-field-checkboxes');
+    checkboxContainers.forEach(container => {
+        container.style.display = show ? 'flex' : 'none';
+    });
 }
 
 function createFieldEditorPanel() {
