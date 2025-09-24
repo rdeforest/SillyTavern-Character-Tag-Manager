@@ -637,35 +637,35 @@ font-size: .9em;
 
 .stcm-edit-checkbox, .stcm-context-checkbox {
     resize: none!important;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 3px;
-    background-color: var(--SmartThemeBodyColor);
-    box-shadow: inset 0 0 2px 0 var(--SmartThemeShadowColor);
-    cursor: pointer;
-    position: relative;
-    display: grid;
-    place-content: center;
-    filter: brightness(1.2);
+    -webkit-appearance: none!important;
+    -moz-appearance: none!important;
+    appearance: none!important;
+    width: 16px!important;
+    height: 16px!important;
+    border: 1px solid var(--SmartThemeBorderColor)!important;
+    border-radius: 3px!important;
+    background-color: var(--SmartThemeBodyColor)!important;
+    box-shadow: inset 0 0 2px 0 var(--SmartThemeShadowColor)!important;
+    cursor: pointer!important;
+    position: relative!important;
+    display: grid!important;
+    place-content: center!important;
+    filter: brightness(1.2)!important;
 }
 
 .stcm-edit-checkbox::before, .stcm-context-checkbox::before {
-    content: "";
-    width: 0.65em;
-    height: 0.65em;
-    transform: scale(0);
-    transition: 120ms transform ease-in-out;
-    box-shadow: inset 1em 1em var(--SmartThemeCheckboxTickColor, #4a9eff);
-    transform-origin: bottom left;
-    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    content: ""!important;
+    width: 0.65em!important;
+    height: 0.65em!important;
+    transform: scale(0)!important;
+    transition: 120ms transform ease-in-out!important;
+    box-shadow: inset 1em 1em var(--SmartThemeCheckboxTickColor, #4a9eff)!important;
+    transform-origin: bottom left!important;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%)!important;
 }
 
 .stcm-edit-checkbox:checked::before, .stcm-context-checkbox:checked::before {
-    transform: scale(1);
+    transform: scale(1)!important;
 }
 
 /* Labels */
