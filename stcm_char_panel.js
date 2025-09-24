@@ -1,5 +1,4 @@
 import { renderCharacterList } from "./stcm_characters.js";
-import { callSaveandReload } from "./index.js";
 // ============================================================================
 // stcm_char_panel.js
 // ----------------------------------------------------------------------------
@@ -524,10 +523,38 @@ export function createEditSectionForCharacter(char) {
             });
 
             if (result.ok) {
-                toastr.success(`Saved updates to ${char.name}`);
+                // Update the local character object with the saved changes
+                inputs.forEach(input => {
+                    if (!input.readOnly) {
+                        if (input.name === 'unified.creator_notes') {
+                            char.creatorcomment = input.value;
+                            if (!char.data) char.data = {};
+                            char.data.creator_notes = input.value;
+                        } else {
+                            const keys = input.name.split('.');
+                            let ref = char;
+                            while (keys.length > 1) {
+                                const k = keys.shift();
+                                if (!ref[k]) ref[k] = {};
+                                ref = ref[k];
+                            }
+                            ref[keys[0]] = input.value;
+                        }
+                    }
+                });
                 
-                // Reload SillyTavern's internal character data and refresh UI
-                await callSaveandReload();
+                toastr.success(`Saved updates to ${char.name}`);
+                renderCharacterList();
+                
+                // Reload SillyTavern's internal character data
+                try {
+                    const { callSaveandReload } = await import("./index.js");
+                    if (typeof callSaveandReload === 'function') {
+                        await callSaveandReload();
+                    }
+                } catch (error) {
+                    console.warn('[STCM] Could not reload SillyTavern character data:', error);
+                }
             } else {
                 let msg = 'Failed to save updates.';
                 try { msg = await result.text(); } catch {}
