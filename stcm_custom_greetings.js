@@ -1809,7 +1809,6 @@ async function onSendToLLM(isRegen = false) {
 
 
 
-
 function onAccept() {
     const last = [...miniTurns].reverse().find(t => t.role === 'assistant');
     if (!last || !last.content.trim()) {
@@ -2062,67 +2061,110 @@ async function addCustomGreeting(newGreeting) {
             }
         }
 
-        // Current list from card (prefer data.alternate_greetings)
-        const current = Array.isArray(ch?.data?.alternate_greetings)
+        // Current list from card (prefer data.alternate_greetings, handle both formats)
+        const currentData = Array.isArray(ch?.data?.alternate_greetings)
             ? [...ch.data.alternate_greetings]
             : Array.isArray(ctx?.characterData?.alternate_greetings)
                 ? [...ctx.characterData.alternate_greetings]
                 : [];
 
-        const exists = current.some(g => String(g).trim() === text);
+        // Handle both string and object formats for alternate greetings
+        const currentStrings = currentData.map(g => {
+            if (typeof g === 'object' && g.mes !== undefined) {
+                return g.mes;
+            }
+            return String(g || '').trim();
+        }).filter(s => s.length > 0);
+
+        const exists = currentStrings.some(g => g === text);
         if (exists) {
-            return { saved: false, message: 'This greeting is already saved.', total: current.length };
+            return { saved: false, message: 'This greeting is already saved.', total: currentStrings.length };
         }
 
-        const next = [...current, text];
+        // Create new greeting in object format (consistent with SillyTavern v3 spec)
+        const newGreetingObj = { mes: text };
+        const nextData = [...currentData, newGreetingObj];
+        const nextStrings = [...currentStrings, text];
 
-        // Persist via the same API used by the edit card panel
-        const payload = { avatar: avatar, data: { alternate_greetings: next } };
+        // Build payload using the same structure as character panel
+        const payload = { 
+            avatar: avatar,
+            data: { 
+                alternate_greetings: nextData 
+            },
+            alternate_greetings: nextData  // Set both locations for compatibility
+        };
 
         if (!payload.avatar) {
             console.warn('[GW] Could not resolve character identity (avatar/name). Aborting save. ch:', ch, 'ctx.characterId:', ctx?.characterId);
             return { saved: false, message: 'Cannot resolve current character (avatar/name). Please open the character and try again.' };
         }
 
-        // Fetch CSRF token the same way as other modules in this extension
-        let token = null;
-        try {
-            const csrfRes = await fetch('/csrf-token', { credentials: 'include' });
-            if (csrfRes.ok) {
-                const data = await csrfRes.json();
-                token = data?.token || null;
-            }
-        } catch { /* ignore; server might not require token */ }
-
-        const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
-        if (token) headers['X-CSRF-Token'] = token;
+        // Use SillyTavern's native request headers function
+        const getRequestHeaders = ctx?.getRequestHeaders || window?.getRequestHeaders;
+        if (!getRequestHeaders) {
+            throw new Error('getRequestHeaders function not available');
+        }
 
         // Helpful debug for troubleshooting 500s
-        try { console.debug('[GW] merge-attributes payload', payload); } catch {}
+        console.debug('[GW] merge-attributes payload', payload);
 
         const res = await fetch('/api/characters/merge-attributes', {
             method: 'POST',
-            headers,
-            credentials: 'include',
+            headers: getRequestHeaders(),
             body: JSON.stringify(payload)
         });
 
         if (!res.ok) {
-            let reason = 'Unknown error';
-            try { reason = await res.text(); } catch { }
-            const msg = res.status === 403
-                ? 'Forbidden (403). Invalid CSRF token or insufficient permissions. Please refresh the page and try again.'
-                : `${res.status} ${res.statusText}: ${reason}`;
-            throw new Error(msg);
+            let errorMessage = 'Failed to save alternate greeting.';
+            try {
+                const errorJson = await res.json();
+                if (errorJson.message) {
+                    errorMessage = `Character not saved. Error: ${errorJson.message}`;
+                    if (errorJson.error) {
+                        errorMessage += `. Field: ${errorJson.error}`;
+                    }
+                }
+            } catch {
+                errorMessage = `Failed to save alternate greeting. Status: ${res.status} ${res.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
 
         // Update in-memory caches for immediate availability
         if (!ctx.characterData) ctx.characterData = {};
-        ctx.characterData.alternate_greetings = next;
-        if (ch && ch.data) ch.data.alternate_greetings = next;
+        ctx.characterData.alternate_greetings = nextData;
+        if (ch) {
+            if (!ch.data) ch.data = {};
+            ch.data.alternate_greetings = nextData;
+            ch.alternate_greetings = nextData; // Also set root level for compatibility
+        }
+
+        // Update json_data field if it exists (for persistence)
+        if (ch && ch.json_data) {
+            try {
+                const jsonData = JSON.parse(ch.json_data);
+                if (!jsonData.data) jsonData.data = {};
+                jsonData.data.alternate_greetings = nextData;
+                jsonData.alternate_greetings = nextData;
+                ch.json_data = JSON.stringify(jsonData);
+            } catch (e) {
+                console.warn('[GW] Failed to update json_data field:', e);
+            }
+        }
+
+        // Use SillyTavern's native character refresh methods
+        if (typeof ctx?.getCharacters === 'function') {
+            await ctx.getCharacters();
+        }
+        
+        // Trigger character edited event if available
+        if (ctx?.eventSource && ctx?.event_types?.CHARACTER_EDITED && ch) {
+            ctx.eventSource.emit(ctx.event_types.CHARACTER_EDITED, ch);
+        }
 
         saveSession();
-        return { saved: true, message: 'Saved to alternate_greetings.', total: next.length };
+        return { saved: true, message: 'Saved to alternate_greetings.', total: nextStrings.length };
     } catch (e) {
         console.warn('[GW] addCustomGreeting failed:', e);
         throw e;
