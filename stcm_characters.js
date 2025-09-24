@@ -1,18 +1,19 @@
 //stcm_characters.js
-import { debouncePersist,
+import {
+    debouncePersist,
     buildTagMap,
     getNotes,
     saveNotes,
     parseSearchGroups,
     parseSearchTerm,
-    resetModalScrollPositions, 
-    makeModalDraggable, 
+    resetModalScrollPositions,
+    makeModalDraggable,
     saveModalPosSize,
     clampModalSize,
     createMinimizableModalControls,
     getNextZIndex
- } from './utils.js';
-    
+} from './utils.js';
+
 import { tags, tag_map, removeTagFromEntity } from "../../../tags.js";
 import { characters, selectCharacterById } from "../../../../script.js";
 import { groups, getGroupAvatar } from "../../../../scripts/group-chats.js";
@@ -61,76 +62,77 @@ async function renderCharacterList() {
 
     document.getElementById('assignTagsBar').style.display = showCheckboxes ? 'block' : 'none';
 
+    const searchTerm = document.getElementById('charSearchInput')?.value.toLowerCase() || '';
+    const sortMode = document.getElementById('charSortMode')?.value || 'alpha_asc';
 
-        const searchTerm = document.getElementById('charSearchInput')?.value.toLowerCase() || '';
-        const sortMode = document.getElementById('charSortMode')?.value || 'alpha_asc';
+    const allEntities = [
+        ...characters.map(c => ({ type: 'character', id: c.avatar, name: c.name, avatar: c.avatar })),
+        ...groups.map(g => ({ type: 'group', id: g.id, name: g.name, avatar: g.avatar }))
+    ];
 
-        const allEntities = [
-            ...characters.map(c => ({ type: 'character', id: c.avatar, name: c.name, avatar: c.avatar })),
-            ...groups.map(g => ({ type: 'group', id: g.id, name: g.name, avatar: g.avatar }))
-        ];
+    allEntities.forEach(entity => {
+        entity.tagCount = Array.isArray(tag_map[entity.id]) ? tag_map[entity.id].length : 0;
+    });
 
-        allEntities.forEach(entity => {
-            entity.tagCount = Array.isArray(tag_map[entity.id]) ? tag_map[entity.id].length : 0;
-        });
+    const rawInput = document.getElementById('charSearchInput')?.value || '';
+    const searchGroups = parseSearchGroups(rawInput);
 
-        const rawInput = document.getElementById('charSearchInput')?.value || '';
-        const searchGroups = parseSearchGroups(rawInput);
+    const filterEntity = (entity) => {
+        const charObj = characters.find(c => c.avatar === entity.id);
+        const tagIds = tag_map[entity.id] || [];
+        const tagNames = tagIds.map(tagId => (tagMapById.get(tagId)?.name?.toLowerCase() || ""));
+        const allFields = charObj ? Object.values(charObj).filter(v => typeof v === 'string').join(' ').toLowerCase() : '';
+        const name = entity.name.toLowerCase();
 
-        const filterEntity = (entity) => {
-            const charObj = characters.find(c => c.avatar === entity.id);
-            const tagIds = tag_map[entity.id] || [];
-            const tagNames = tagIds.map(tagId => (tagMapById.get(tagId)?.name?.toLowerCase() || ""));
-            const allFields = charObj ? Object.values(charObj).filter(v => typeof v === 'string').join(' ').toLowerCase() : '';
-            const name = entity.name.toLowerCase();
-        
-            // --- Add this ---
-            let folderName = '';
-            if (entity.type === 'character') {
-                const assignedFolder = stcmFolders.getCharacterAssignedFolder(entity.id, folders);
-                if (assignedFolder) {
-                    folderName = assignedFolder.name?.toLowerCase() || '';
-                }
-                  }
-            
-        
-            // If no search (empty), show all
-            if (searchGroups.length === 0) return true;
-        
-            // OR logic: If any group matches, show this entity
-            for (const group of searchGroups) {
-                let groupMatches = true;
-                for (const termStr of group) {
-                    const term = parseSearchTerm(termStr);
-                    if (!term) continue;
-                    let match = false;
-                    if (term.field === 'a') {
-                        match = allFields.includes(term.value);
-                    } else if (term.field === 't') {
-                        match = tagNames.some(tagName => tagName.includes(term.value));
-                    } else if (term.field === 'f') {
-                        // Only match folders for characters (not groups)
-                        match = entity.type === 'character' && folderName.includes(term.value);
-                    } else {
-                        match = name.includes(term.value);
-                    }
-                    if (term.positive && !match) {
-                        groupMatches = false;
-                        break;
-                    }
-                    if (!term.positive && match) {
-                        groupMatches = false;
-                        break;
-                    }
-                }
-                if (groupMatches) return true;
+        // Folder name (characters only)
+        let folderName = '';
+        if (entity.type === 'character') {
+            const assignedFolder = stcmFolders.getCharacterAssignedFolder(entity.id, folders);
+            if (assignedFolder) {
+                folderName = assignedFolder.name?.toLowerCase() || '';
             }
-            return false;
-        };
-        
+        }
 
-        const filtered = allEntities.filter(filterEntity);
+        // If no search (empty), show all
+        if (searchGroups.length === 0) return true;
 
+        // OR logic: If any group matches, show this entity
+        for (const group of searchGroups) {
+            let groupMatches = true;
+            for (const termStr of group) {
+                const term = parseSearchTerm(termStr);
+                if (!term) continue;
+
+                // Ensure case-insensitive comparisons
+                const termValue = (term.value || '').toLowerCase();
+
+                let match = false;
+                if (term.field === 'a') {
+                    match = allFields.includes(termValue);
+                } else if (term.field === 't') {
+                    match = tagNames.some(tagName => tagName.includes(termValue));
+                } else if (term.field === 'f') {
+                    // Only match folders for characters (not groups)
+                    match = entity.type === 'character' && folderName.includes(termValue);
+                } else {
+                    match = name.includes(termValue);
+                }
+
+                if (term.positive && !match) {
+                    groupMatches = false;
+                    break;
+                }
+                if (!term.positive && match) {
+                    groupMatches = false;
+                    break;
+                }
+            }
+            if (groupMatches) return true;
+        }
+        return false;
+    };
+
+    const filtered = allEntities.filter(filterEntity);
 
     const notes = getNotes();
     let visible = filtered;
@@ -176,8 +178,6 @@ async function renderCharacterList() {
         return;
     }
 
-    
-
     const list = document.createElement('ul');
     list.className = 'charList';
 
@@ -192,10 +192,8 @@ async function renderCharacterList() {
             li.setAttribute('data-entity-type', 'group');
             li.setAttribute('data-group-id', entity.id);
             li.setAttribute('data-name', entity.name);
-            // Optionally: set group avatar if you use avatars for groups
             if (entity.avatar) li.setAttribute('data-avatar', entity.avatar);
         }
-        
 
         const metaWrapper = document.createElement('div');
         metaWrapper.className = 'charMeta stcm_flex_row_between';
@@ -203,8 +201,6 @@ async function renderCharacterList() {
         // === Left side ===
         const leftSide = document.createElement('div');
         leftSide.className = 'charLeftSide';
-
-
 
         const rightContent = document.createElement('div');
         rightContent.className = 'charMetaRight';
@@ -245,7 +241,7 @@ async function renderCharacterList() {
         leftSide.appendChild(img);
 
         const nameSpan = document.createElement('span');
-        nameSpan.className = 'charName charActivate'; // <-- add charActivate
+        nameSpan.className = 'charName charActivate';
         nameSpan.textContent = `${entity.name} (${entity.tagCount} tag${entity.tagCount !== 1 ? 's' : ''})`;
         nameRow.appendChild(nameSpan);
 
@@ -260,49 +256,42 @@ async function renderCharacterList() {
 
         nameRow.appendChild(noteBtn);
         
-     // --- FOLDER DROPDOWN ---
+        // --- FOLDER DROPDOWN ---
         let folderDropdown;
         let assignedFolder = null;
 
         if (entity.type === 'character') {
             assignedFolder = stcmFolders.getCharacterAssignedFolder(entity.id, folders);
-        
-            // --- Create container for icon + dropdown ---
+
             const folderDropdownWrapper = document.createElement('span');
             folderDropdownWrapper.className = 'charFolderDropdownWrapper';
-        
-            // --- Font Awesome icon ---
+
             const folderIcon = document.createElement('i');
             folderIcon.className = 'fa-solid fa-folder-open';
             folderIcon.style.fontSize = '1.5em';
-        
-            // --- Dropdown ---
+
             folderDropdown = document.createElement('select');
             folderDropdown.className = 'charFolderDropdown';
             folderDropdown.style.whiteSpace = 'pre';
-        
-            // Add option for "No Folder"
+
             const optNone = document.createElement('option');
             optNone.value = '';
             optNone.textContent = '-- No Folder --';
             folderDropdown.appendChild(optNone);
-        
-            // Use indented tree
+
             const folderOptions = getFolderOptionsTree(folders, [], 'root', 0)
-                .filter(opt => opt.id !== 'root'); // Don't allow root as assignable
-        
+                .filter(opt => opt.id !== 'root');
+
             folderOptions.forEach(opt => {
                 const option = document.createElement('option');
                 option.value = opt.id;
-                option.innerHTML = opt.name; // .name contains indents (&nbsp;)
+                option.innerHTML = opt.name;
                 if (assignedFolder && opt.id === assignedFolder.id) option.selected = true;
                 folderDropdown.appendChild(option);
             });
-        
-            // Folder assignment change handler
+
             folderDropdown.addEventListener('change', async (e) => {
                 const newFolderId = e.target.value;
-                // Remove from old folder first
                 if (assignedFolder) {
                     await stcmFolders.removeCharacterFromFolder(assignedFolder.id, entity.id);
                 }
@@ -314,12 +303,10 @@ async function renderCharacterList() {
                 renderCharacterList();
                 renderTagSection && renderTagSection();
             });
-        
-            // --- Put icon and dropdown together ---
+
             folderDropdownWrapper.appendChild(folderIcon);
             folderDropdownWrapper.appendChild(folderDropdown);
 
-            // --- Add the remove (x) button ---
             const removeFolderBtn = document.createElement('span');
             removeFolderBtn.className = 'removeFolderBtn';
             removeFolderBtn.textContent = '✕';
@@ -333,28 +320,20 @@ async function renderCharacterList() {
                 font-weight: bold;
             `;
 
-            // --- Remove logic ---
             removeFolderBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                // Set dropdown to "No Folder" and trigger change
                 folderDropdown.value = '';
                 folderDropdown.dispatchEvent(new Event('change', {bubbles:true}));
             });
 
-            // Add ✕ to the wrapper
             folderDropdownWrapper.appendChild(removeFolderBtn);
 
-            // Listen for dropdown changes to show/hide ✕ appropriately
             folderDropdown.addEventListener('change', (e) => {
                 removeFolderBtn.style.display = folderDropdown.value ? 'inline-block' : 'none';
             });
 
-                    
-            // --- Insert into the row ---
             nameRow.appendChild(folderDropdownWrapper);
-            
-        // NEW: AI Suggest button (characters only)
-        if (entity.type === 'character') {
+
             const suggestFolderBtn = document.createElement('button');
             suggestFolderBtn.className = 'stcm_menu_button small interactable stcm_ai_suggest_folder_btn';
             suggestFolderBtn.title = 'AI Folder suggestion';
@@ -374,14 +353,8 @@ async function renderCharacterList() {
             nameRow.appendChild(suggestTagsBtn);
         }
 
-
-
-        }
-        
-
         rightContent.appendChild(nameRow);
 
-        // Note editor wrapper
         const noteWrapper = document.createElement('div');
         noteWrapper.className = 'charNotesWrapper';
         noteWrapper.style.display = 'none';
@@ -414,49 +387,39 @@ async function renderCharacterList() {
         noteWrapper.appendChild(saveBtn);
         rightContent.appendChild(noteWrapper);
 
-        // full, untrimmed description for hover
         const description = (characters.find(c => c.avatar === entity.id)?.description || '').trim();
-
-        // trimmed display excerpt
         const excerpt = description.length > 750 ? description.slice(0, 750).trim() + '…' : description;
 
         const excerptSpan = document.createElement('span');
         excerptSpan.className = 'charExcerpt';
         excerptSpan.textContent = excerpt;
-
-        // apply hover (tooltip)
         excerptSpan.setAttribute('title', description);
-        // optional a11y
         excerptSpan.setAttribute('aria-label', description);
 
         rightContent.appendChild(excerptSpan);
 
-
         const tagListWrapper = document.createElement('div');
         tagListWrapper.className = 'assignedTagsWrapper';
 
-        const tagMapById = buildTagMap(tags);
+        const tagMapById2 = buildTagMap(tags);
         const assignedTags = tag_map[entity.id] || [];
         assignedTags.forEach(tagId => {
-            const tag = tagMapById.get(tagId);
+            const tag = tagMapById2.get(tagId);
             if (!tag) return;
 
             const tagBox = document.createElement('span');
             tagBox.className = 'tagBox';
             tagBox.textContent = tag.name;
 
-            // PLACE THE COLOR FALLBACK LOGIC **HERE**:
             const defaultBg = '#333';
             const defaultFg = '#fff';
 
-            // Use tag color if set, otherwise fallback
             const bgColor = (typeof tag.color === 'string' && tag.color.trim() && tag.color.trim() !== '#') ? tag.color.trim() : defaultBg;
             const fgColor = (typeof tag.color2 === 'string' && tag.color2.trim() && tag.color2.trim() !== '#') ? tag.color2.trim() : defaultFg;
 
             tagBox.style.backgroundColor = bgColor;
             tagBox.style.color = fgColor;
 
-            // Remove button
             const removeBtn = document.createElement('span');
             removeBtn.className = 'removeTagBtn';
             removeBtn.textContent = ' ✕';
@@ -465,7 +428,6 @@ async function renderCharacterList() {
                 callSaveandReload();
                 renderTagSection();
                 renderCharacterList();
-
             });
 
             tagBox.appendChild(removeBtn);
@@ -475,7 +437,6 @@ async function renderCharacterList() {
 
         leftSide.appendChild(rightContent);
         metaWrapper.appendChild(leftSide);
-
 
         // === Right Controls ===
         const rightControls = document.createElement('div');
@@ -528,7 +489,6 @@ async function renderCharacterList() {
             callSaveandReload();
             renderTagSection();
             renderCharacterList();
-
         });
 
         rightControls.appendChild(editIcon);
@@ -538,178 +498,160 @@ async function renderCharacterList() {
 
         if (entity.type === 'character') {
             const char = characters.find(c => c.avatar === entity.id);
-            if (entity.type === 'character') {
-                const char = characters.find(c => c.avatar === entity.id);
-                if (char) {
-                    editIcon.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        openCharEditModal(char);
-                      });
-                      
-                      // avatar -> same modal
-                      img.addEventListener('click', (e) => {
-                        e.stopPropagation(); 
-                        openCharEditModal(char);
-                      });
+            if (char) {
+                editIcon.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openCharEditModal(char);
+                });
 
-                      nameSpan.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        openCharEditModal(char);
-                      });
-                }
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation(); 
+                    openCharEditModal(char);
+                });
+
+                nameSpan.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openCharEditModal(char);
+                });
             }
         }
 
-                
         list.appendChild(li);
     });
-
 
     container.appendChild(list);
 
     //wire up Select All, after all checkboxes exist:
-const selectAllBox = document.getElementById('selectAllCharactersCheckbox');
-if (selectAllBox) {
-    // When toggled, check/uncheck all visible assignCharCheckbox
-    selectAllBox.onchange = function () {
-        const checkboxes = container.querySelectorAll('.assignCharCheckbox');
-        const ids = Array.from(checkboxes).map(cb => cb.value);
-        if (selectAllBox.checked) {
-            ids.forEach(id => stcmCharState.selectedCharacterIds.add(id));
-        } else {
-            ids.forEach(id => stcmCharState.selectedCharacterIds.delete(id));
-        }
-        // Rerender to update all checkboxes at once
-        renderCharacterList();
-    };
-    
+    const selectAllBox = document.getElementById('selectAllCharactersCheckbox');
+    if (selectAllBox) {
+        selectAllBox.onchange = function () {
+            const checkboxes = container.querySelectorAll('.assignCharCheckbox');
+            const ids = Array.from(checkboxes).map(cb => cb.value);
+            if (selectAllBox.checked) {
+                ids.forEach(id => stcmCharState.selectedCharacterIds.add(id));
+            } else {
+                ids.forEach(id => stcmCharState.selectedCharacterIds.delete(id));
+            }
+            renderCharacterList();
+        };
 
-    // Indeterminate state: if user manually clicks
-    const syncSelectAllState = () => {
-        const checkboxes = container.querySelectorAll('.assignCharCheckbox');
-        const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
-        selectAllBox.checked = checked === checkboxes.length && checked > 0;
-        selectAllBox.indeterminate = checked > 0 && checked < checkboxes.length;
-    };
-    container.querySelectorAll('.assignCharCheckbox').forEach(cb => {
-        cb.addEventListener('change', syncSelectAllState);
-    });
-    // Initial sync
-    syncSelectAllState();
-}
+        const syncSelectAllState = () => {
+            const checkboxes = container.querySelectorAll('.assignCharCheckbox');
+            const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
+            selectAllBox.checked = checked === checkboxes.length && checked > 0;
+            selectAllBox.indeterminate = checked > 0 && checked < checkboxes.length;
+        };
+        container.querySelectorAll('.assignCharCheckbox').forEach(cb => {
+            cb.addEventListener('change', syncSelectAllState);
+        });
+        syncSelectAllState();
+    }
 
     // ===== BULK FOLDER ASSIGN BAR (ONE TIME) =====
-const bulkFolderSelect = document.getElementById('bulkFolderSelect');
-if (bulkFolderSelect) {
-    bulkFolderSelect.innerHTML = ''; // Clear previous
+    const bulkFolderSelect = document.getElementById('bulkFolderSelect');
+    if (bulkFolderSelect) {
+        bulkFolderSelect.innerHTML = '';
 
-    // "-- No Folder --" option
-    const optNone = document.createElement('option');
-    optNone.value = '';
-    optNone.textContent = '-- No Folder --';
-    bulkFolderSelect.appendChild(optNone);
+        const optNone = document.createElement('option');
+        optNone.value = '';
+        optNone.textContent = '-- No Folder --';
+        bulkFolderSelect.appendChild(optNone);
 
-    // Populate with folder tree
-    const folderOptions = getFolderOptionsTree(folders, [], 'root', 0)
-        .filter(opt => opt.id !== 'root');
-    folderOptions.forEach(opt => {
-        const option = document.createElement('option');
-        option.value = opt.id;
-        option.innerHTML = opt.name; // name contains indents
-        bulkFolderSelect.appendChild(option);
-    });
+        const folderOptions = getFolderOptionsTree(folders, [], 'root', 0)
+            .filter(opt => opt.id !== 'root');
+        folderOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.id;
+            option.innerHTML = opt.name;
+            bulkFolderSelect.appendChild(option);
+        });
 
-    // Assign button handler
-    document.getElementById('bulkAssignFolderBtn').onclick = async function() {
-        const selectedFolderId = bulkFolderSelect.value;
-        const charIds = Array.from(stcmCharState.selectedCharacterIds);
-        if (charIds.length === 0) {
-            toastr.warning('No characters selected.');
-            return;
-        }
-        // Always remove from any existing folder
-        for (const charId of charIds) {
-            const currentFolder = stcmFolders.getCharacterAssignedFolder(charId, folders);
-            if (currentFolder) {
-                await stcmFolders.removeCharacterFromFolder(currentFolder.id, charId);
+        document.getElementById('bulkAssignFolderBtn').onclick = async function() {
+            const selectedFolderId = bulkFolderSelect.value;
+            const charIds = Array.from(stcmCharState.selectedCharacterIds);
+            if (charIds.length === 0) {
+                toastr.warning('No characters selected.');
+                return;
             }
-        }
-        // Only assign to new folder if a folder was picked (not root)
-        if (selectedFolderId) {
-            await stcmFolders.assignCharactersToFolder(selectedFolderId, charIds);
-            toastr.success(`Assigned ${charIds.length} character${charIds.length !== 1 ? 's' : ''} to folder.`);
-        } else {
-            toastr.success(`Removed ${charIds.length} character${charIds.length !== 1 ? 's' : ''} from all folders (moved to root).`);
-        }
-        stcmCharState.selectedCharacterIds.clear();
-        callSaveandReload();
-        renderCharacterList();
-        renderTagSection && renderTagSection();
-    };
-    
-}
-
+            for (const charId of charIds) {
+                const currentFolder = stcmFolders.getCharacterAssignedFolder(charId, folders);
+                if (currentFolder) {
+                    await stcmFolders.removeCharacterFromFolder(currentFolder.id, charId);
+                }
+            }
+            if (selectedFolderId) {
+                await stcmFolders.assignCharactersToFolder(selectedFolderId, charIds);
+                toastr.success(`Assigned ${charIds.length} character${charIds.length !== 1 ? 's' : ''} to folder.`);
+            } else {
+                toastr.success(`Removed ${charIds.length} character${charIds.length !== 1 ? 's' : ''} from all folders (moved to root).`);
+            }
+            stcmCharState.selectedCharacterIds.clear();
+            callSaveandReload();
+            renderCharacterList();
+            renderTagSection && renderTagSection();
+        };
+    }
 }
 
 function openCharEditModal(char) {
     if (!char) return;
-  
+
     let modal = document.getElementById(`stcmCharEditModal-${char.avatar}`);
     if (!modal) {
-      modal = document.createElement('div');
-      modal.id = `stcmCharEditModal-${char.avatar}`;
-      modal.className = 'stcmCharEditModal modalWindow';
-      modal.style.zIndex = getNextZIndex();
-      document.body.appendChild(modal);
-  
-      const header = document.createElement('div');
-      header.className = 'modalHeader';
-      header.id = `stcmCharEditModalHeader-${char.avatar}`;
-  
-      const title = document.createElement('div');
-      title.className = 'modalTitle';
-      title.textContent = `Edit Character: ${char.name}`;
-  
-      const fieldEditorBtn = document.createElement('button');
-      fieldEditorBtn.className = 'stcm_menu_button interactable';
-      fieldEditorBtn.textContent = 'AI Char Edit';
-      fieldEditorBtn.title = 'Edit character fields with AI assistance';
-      fieldEditorBtn.style.marginRight = '8px';
-      fieldEditorBtn.onclick = () => openCharacterFieldEditor(char);
-  
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'stcm_menu_button interactable modal-close modalCloseBtn';
-      closeBtn.textContent = '×';
-      closeBtn.onclick = () => modal.remove();
-  
-      const avatarSrc = `/characters/${char.avatar}`;
-      const { minimizeBtn } = createMinimizableModalControls(modal, `Editing: ${char.name}`, avatarSrc);
-  
-      header.appendChild(title);
-      header.appendChild(fieldEditorBtn);
-      header.appendChild(minimizeBtn);
-      header.appendChild(closeBtn);
-  
-      const body = document.createElement('div');
-      body.className = 'modalBody';
-      body.appendChild(createEditSectionForCharacter(char));
-  
-      modal.appendChild(header);
-      modal.appendChild(body);
-  
-      modal.addEventListener('mousedown', () => {
+        modal = document.createElement('div');
+        modal.id = `stcmCharEditModal-${char.avatar}`;
+        modal.className = 'stcmCharEditModal modalWindow';
         modal.style.zIndex = getNextZIndex();
-      });
-  
-      clampModalSize(modal, 20);
-      makeModalDraggable(modal, header, () => saveModalPosSize(modal));
-      saveModalPosSize(modal);
+        document.body.appendChild(modal);
+
+        const header = document.createElement('div');
+        header.className = 'modalHeader';
+        header.id = `stcmCharEditModalHeader-${char.avatar}`;
+
+        const title = document.createElement('div');
+        title.className = 'modalTitle';
+        title.textContent = `Edit Character: ${char.name}`;
+
+        const fieldEditorBtn = document.createElement('button');
+        fieldEditorBtn.className = 'stcm_menu_button interactable';
+        fieldEditorBtn.textContent = 'AI Char Edit';
+        fieldEditorBtn.title = 'Edit character fields with AI assistance';
+        fieldEditorBtn.style.marginRight = '8px';
+        fieldEditorBtn.onclick = () => openCharacterFieldEditor(char);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'stcm_menu_button interactable modal-close modalCloseBtn';
+        closeBtn.textContent = '×';
+        closeBtn.onclick = () => modal.remove();
+
+        const avatarSrc = `/characters/${char.avatar}`;
+        const { minimizeBtn } = createMinimizableModalControls(modal, `Editing: ${char.name}`, avatarSrc);
+
+        header.appendChild(title);
+        header.appendChild(fieldEditorBtn);
+        header.appendChild(minimizeBtn);
+        header.appendChild(closeBtn);
+
+        const body = document.createElement('div');
+        body.className = 'modalBody';
+        body.appendChild(createEditSectionForCharacter(char));
+
+        modal.appendChild(header);
+        modal.appendChild(body);
+
+        modal.addEventListener('mousedown', () => {
+            modal.style.zIndex = getNextZIndex();
+        });
+
+        clampModalSize(modal, 20);
+        makeModalDraggable(modal, header, () => saveModalPosSize(modal));
+        saveModalPosSize(modal);
     }
-  
+
     modal.style.display = 'block';
     modal.style.zIndex = getNextZIndex();
-  }
-  
+}
+
 
 function toggleCharacterList(container, group) {
     const existingList = container.querySelector('.charList');
@@ -794,7 +736,7 @@ function toggleCharacterList(container, group) {
 
             // 🔄 Save and Refresh both sections
             callSaveandReload();
-            renderTagSection(); 
+            renderTagSection();
             renderCharacterList();
 
         });
@@ -814,7 +756,7 @@ function toggleCharacterList(container, group) {
 }
 
 // name click listener
-document.addEventListener('click', function(e) {
+document.addEventListener('click', function (e) {
     const target = e.target;
     if (target.classList.contains('charActivate')) {
         const li = target.closest('.charListItemWrapper');
