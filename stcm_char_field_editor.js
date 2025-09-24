@@ -519,9 +519,11 @@ function createFieldSelectionSection() {
         contextFieldList.appendChild(contextRow);
     });
 
-    // Add individual alternate greetings if they exist
+    // Add alternate greetings selector if they exist
     if (currentCharacter?.alternate_greetings?.length > 0) {
-        // Add a section header for alternate greetings selection
+        const totalGreetings = currentCharacter.alternate_greetings.length;
+        
+        // Add header for alternate greetings selector
         const altGreetingHeader = el('div', 'stcm-alt-greeting-header');
         altGreetingHeader.style.cssText = `
             margin: 10px 0 5px 0; 
@@ -530,166 +532,139 @@ function createFieldSelectionSection() {
             border-radius: 4px;
             border-left: 3px solid #4a9eff;
         `;
-        altGreetingHeader.innerHTML = '<strong>Individual Alternate Greetings:</strong>';
+        altGreetingHeader.innerHTML = `<strong>Alternate Greetings (${totalGreetings} total):</strong>`;
         editFieldList.appendChild(altGreetingHeader);
         
-        // Add a note about selection
-        const selectionNote = el('div', 'stcm-selection-note');
-        selectionNote.style.cssText = `
-            margin: 0 0 8px 0; 
-            padding: 3px 8px; 
-            font-size: 0.9em; 
-            color: #aaa;
-            font-style: italic;
+        // Add range selector
+        const rangeSelector = el('div', 'stcm-range-selector');
+        rangeSelector.style.cssText = `
+            margin: 5px 0; 
+            padding: 8px; 
+            background: #1a1a1a; 
+            border-radius: 4px;
+            border: 1px solid #333;
         `;
-        selectionNote.textContent = 'Select which specific greetings to edit:';
-        editFieldList.appendChild(selectionNote);
         
-        currentCharacter.alternate_greetings.forEach((greeting, index) => {
-            const fieldKey = `alternate_greetings[${index}]`;
-            const mesFieldKey = `alternate_greetings[${index}].mes`;
+        const rangeLabel = el('div', null, 'Select range to show:');
+        rangeLabel.style.cssText = 'font-size: 0.9em; color: #aaa; margin-bottom: 5px;';
+        
+        const rangeInputs = el('div', 'stcm-range-inputs');
+        rangeInputs.style.cssText = 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;';
+        
+        const fromLabel = el('span', null, 'From:');
+        fromLabel.style.fontSize = '0.85em';
+        const fromInput = document.createElement('input');
+        fromInput.type = 'number';
+        fromInput.min = '1';
+        fromInput.max = totalGreetings;
+        fromInput.value = '1';
+        fromInput.style.cssText = 'width: 60px; padding: 2px 4px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;';
+        
+        const toLabel = el('span', null, 'To:');
+        toLabel.style.fontSize = '0.85em';
+        const toInput = document.createElement('input');
+        toInput.type = 'number';
+        toInput.min = '1';
+        toInput.max = totalGreetings;
+        toInput.value = Math.min(10, totalGreetings).toString();
+        toInput.style.cssText = fromInput.style.cssText;
+        
+        const showBtn = mkBtn('Show', 'info');
+        showBtn.style.cssText = 'padding: 2px 8px; font-size: 0.85em;';
+        
+        const showAllBtn = mkBtn('Show All', 'warn');
+        showAllBtn.style.cssText = 'padding: 2px 8px; font-size: 0.85em;';
+        
+        rangeInputs.append(fromLabel, fromInput, toLabel, toInput, showBtn, showAllBtn);
+        rangeSelector.append(rangeLabel, rangeInputs);
+        editFieldList.appendChild(rangeSelector);
+        
+        // Container for dynamically shown greetings
+        const dynamicGreetingsContainer = el('div', 'stcm-dynamic-greetings');
+        editFieldList.appendChild(dynamicGreetingsContainer);
+        
+        const contextDynamicGreetingsContainer = el('div', 'stcm-context-dynamic-greetings');
+        contextFieldList.appendChild(contextDynamicGreetingsContainer);
+        
+        // Function to show greetings in range
+        const showGreetingsInRange = (start, end) => {
+            // Clear existing dynamic greetings
+            dynamicGreetingsContainer.innerHTML = '';
+            contextDynamicGreetingsContainer.innerHTML = '';
             
-            // Get a preview of the greeting message
-            let previewText = '';
-            if (typeof greeting === 'object' && greeting.mes) {
-                previewText = greeting.mes.slice(0, 50);
-            } else if (typeof greeting === 'string') {
-                previewText = greeting.slice(0, 50);
+            const actualStart = Math.max(1, Math.min(start, totalGreetings)) - 1; // Convert to 0-based
+            const actualEnd = Math.max(actualStart, Math.min(end, totalGreetings)) - 1; // Convert to 0-based
+            
+            // Add context header if showing any greetings
+            if (actualStart <= actualEnd) {
+                const contextHeader = el('div', 'stcm-context-alt-header');
+                contextHeader.style.cssText = altGreetingHeader.style.cssText;
+                contextHeader.innerHTML = `<strong>Alternate Greetings (${actualStart + 1}-${actualEnd + 1}):</strong>`;
+                contextDynamicGreetingsContainer.appendChild(contextHeader);
             }
-            if (previewText.length === 50) previewText += '...';
             
-            const dynamicField = {
-                key: fieldKey,
-                label: `Greeting ${index + 1}${previewText ? `: "${previewText}"` : ''}`,
-                multiline: true,
-                category: 'basics',
-                readonly: false,
-                isDynamic: true
-            };
-            
-            const mesField = {
-                key: mesFieldKey,
-                label: `Greeting ${index + 1} Message${previewText ? `: "${previewText}"` : ''}`,
-                multiline: true,
-                category: 'basics',
-                readonly: false,
-                isDynamic: true
-            };
+            for (let i = actualStart; i <= actualEnd; i++) {
+                const greeting = currentCharacter.alternate_greetings[i];
+                const fieldKey = `alternate_greetings[${i}]`;
+                const mesFieldKey = `alternate_greetings[${i}].mes`;
+                
+                // Get preview text
+                let previewText = '';
+                if (typeof greeting === 'object' && greeting.mes) {
+                    previewText = greeting.mes.slice(0, 60);
+                } else if (typeof greeting === 'string') {
+                    previewText = greeting.slice(0, 60);
+                }
+                if (previewText.length === 60) previewText += '...';
+                
+                const dynamicField = {
+                    key: fieldKey,
+                    label: `Alt Greeting ${i + 1}${previewText ? `: "${previewText}"` : ''}`,
+                    multiline: true,
+                    category: 'basics',
+                    readonly: false,
+                    isDynamic: true
+                };
+                
+                const mesField = {
+                    key: mesFieldKey,
+                    label: `Alt Greeting ${i + 1} Message${previewText ? `: "${previewText}"` : ''}`,
+                    multiline: true,
+                    category: 'basics',
+                    readonly: false,
+                    isDynamic: true
+                };
 
-            // Edit field checkbox for full greeting object
-            const editRow = createFieldCheckbox(dynamicField, 'edit');
-            editFieldList.appendChild(editRow);
-            
-            // Edit field checkbox for just the message
-            const mesEditRow = createFieldCheckbox(mesField, 'edit');
-            editFieldList.appendChild(mesEditRow);
+                // Edit field checkboxes
+                const editRow = createFieldCheckbox(dynamicField, 'edit');
+                const mesEditRow = createFieldCheckbox(mesField, 'edit');
+                dynamicGreetingsContainer.append(editRow, mesEditRow);
 
-            // Context field checkbox for full greeting object  
-            const contextRow = createFieldCheckbox(dynamicField, 'context');
-            contextFieldList.appendChild(contextRow);
+                // Context field checkboxes
+                const contextRow = createFieldCheckbox(dynamicField, 'context');
+                const mesContextRow = createFieldCheckbox(mesField, 'context');
+                contextDynamicGreetingsContainer.append(contextRow, mesContextRow);
+            }
             
-            // Context field checkbox for just the message
-            const mesContextRow = createFieldCheckbox(mesField, 'context');
-            contextFieldList.appendChild(mesContextRow);
+            // Update checkboxes to reflect current state
+            updateSidePanelCheckboxes();
+        };
+        
+        // Event listeners
+        showBtn.addEventListener('click', () => {
+            const start = parseInt(fromInput.value) || 1;
+            const end = parseInt(toInput.value) || totalGreetings;
+            showGreetingsInRange(start, end);
         });
         
-        // Add same header to context list
-        const altGreetingContextHeader = el('div', 'stcm-alt-greeting-context-header');
-        altGreetingContextHeader.style.cssText = altGreetingHeader.style.cssText;
-        altGreetingContextHeader.innerHTML = '<strong>Individual Alternate Greetings:</strong>';
-        contextFieldList.appendChild(altGreetingContextHeader);
+        showAllBtn.addEventListener('click', () => {
+            fromInput.value = '1';
+            toInput.value = totalGreetings.toString();
+            showGreetingsInRange(1, totalGreetings);
+        });
         
-        const contextSelectionNote = el('div', 'stcm-context-selection-note');
-        contextSelectionNote.style.cssText = selectionNote.style.cssText;
-        contextSelectionNote.textContent = 'Select which greetings to use as context:';
-        contextFieldList.appendChild(contextSelectionNote);
-        
-        // Add option to create additional greetings
-        const addMoreHeader = el('div', 'stcm-add-more-header');
-        addMoreHeader.style.cssText = `
-            margin: 15px 0 5px 0; 
-            padding: 5px; 
-            background: #2a4a2a; 
-            border-radius: 4px;
-            border-left: 3px solid #4aff4a;
-        `;
-        addMoreHeader.innerHTML = '<strong>Add More Greetings:</strong>';
-        editFieldList.appendChild(addMoreHeader);
-        
-        const addMoreNote = el('div', 'stcm-add-more-note');
-        addMoreNote.style.cssText = `
-            margin: 0 0 8px 0; 
-            padding: 3px 8px; 
-            font-size: 0.9em; 
-            color: #aaa;
-            font-style: italic;
-        `;
-        addMoreNote.textContent = 'Create additional greeting slots:';
-        editFieldList.appendChild(addMoreNote);
-        
-        // Provide options to add more greetings beyond existing ones
-        const existingCount = currentCharacter.alternate_greetings.length;
-        for (let i = existingCount; i < existingCount + 3; i++) {
-            const addGreetingField = {
-                key: `alternate_greetings[${i}].mes`,
-                label: `Add Greeting ${i + 1}`,
-                multiline: true,
-                category: 'basics',
-                readonly: false,
-                isDynamic: true
-            };
-            
-            // Edit field checkbox for adding new greeting
-            const addEditRow = createFieldCheckbox(addGreetingField, 'edit');
-            editFieldList.appendChild(addEditRow);
-            
-            // Context field checkbox for adding new greeting  
-            const addContextRow = createFieldCheckbox(addGreetingField, 'context');
-            contextFieldList.appendChild(addContextRow);
-        }
-    } else {
-        // If no alternate greetings exist, provide options to create new ones
-        const createHeader = el('div', 'stcm-create-greeting-header');
-        createHeader.style.cssText = `
-            margin: 10px 0 5px 0; 
-            padding: 5px; 
-            background: #2a4a2a; 
-            border-radius: 4px;
-            border-left: 3px solid #4aff4a;
-        `;
-        createHeader.innerHTML = '<strong>Create New Alternate Greetings:</strong>';
-        editFieldList.appendChild(createHeader);
-        
-        const createNote = el('div', 'stcm-create-note');
-        createNote.style.cssText = `
-            margin: 0 0 8px 0; 
-            padding: 3px 8px; 
-            font-size: 0.9em; 
-            color: #aaa;
-            font-style: italic;
-        `;
-        createNote.textContent = 'Select which greeting slots to create:';
-        editFieldList.appendChild(createNote);
-        
-        // Provide options to create multiple greetings
-        for (let i = 0; i < 3; i++) {
-            const newGreetingField = {
-                key: `alternate_greetings[${i}].mes`,
-                label: `Create Alternate Greeting ${i + 1}`,
-                multiline: true,
-                category: 'basics',
-                readonly: false,
-                isDynamic: true
-            };
-            
-            // Edit field checkbox for creating new greeting
-            const newEditRow = createFieldCheckbox(newGreetingField, 'edit');
-            editFieldList.appendChild(newEditRow);
-            
-            // Context field checkbox for creating new greeting  
-            const newContextRow = createFieldCheckbox(newGreetingField, 'context');
-            contextFieldList.appendChild(newContextRow);
-        }
+        // Show first 10 by default
+        showGreetingsInRange(1, Math.min(10, totalGreetings));
     }
 
     section.append(
