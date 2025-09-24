@@ -356,6 +356,9 @@ function openFieldEditor(character) {
 
     // Initialize UI
     restoreUIFromState();
+    
+    // Initial content refresh to show current field values
+    refreshFieldEditorContent();
 }
 
 function syncFieldSelectionsFromMainPanel() {
@@ -386,6 +389,9 @@ function syncFieldSelectionsFromMainPanel() {
     
     // Save the synced selections
     saveSession();
+    
+    // Auto-refresh field editor content when selections change
+    refreshFieldEditorContent();
 }
 
 function closeFieldEditor() {
@@ -439,6 +445,116 @@ function toggleFieldEditorCheckboxes(modal, show) {
     checkboxContainers.forEach(container => {
         container.style.display = show ? 'flex' : 'none';
     });
+}
+
+function refreshFieldEditorContent() {
+    if (!currentCharacter || !modal) return;
+    
+    // Find all field content displays in the field editor and update them
+    const fieldEditor = document.querySelector('.stcm-field-editor-panel');
+    if (!fieldEditor) return;
+    
+    // Update selected fields content section
+    const contentSection = fieldEditor.querySelector('.stcm-field-content-section');
+    if (contentSection) {
+        // Clear and rebuild the content display
+        contentSection.innerHTML = '';
+        
+        if (selectedFields.size === 0) {
+            const noSelection = el('div', 'stcm-no-selection', 'No fields selected for editing.');
+            noSelection.style.color = '#888';
+            noSelection.style.fontStyle = 'italic';
+            noSelection.style.padding = '12px';
+            contentSection.appendChild(noSelection);
+        } else {
+            selectedFields.forEach(fieldKey => {
+                const fieldInfo = CHARACTER_FIELDS.find(f => f.key === fieldKey) || 
+                                  { key: fieldKey, label: fieldKey, multiline: true };
+                
+                const fieldContainer = el('div', 'stcm-field-content-item');
+                fieldContainer.style.marginBottom = '16px';
+                fieldContainer.style.border = '1px solid var(--stcm-gw-border)';
+                fieldContainer.style.borderRadius = '6px';
+                fieldContainer.style.padding = '12px';
+                fieldContainer.style.backgroundColor = 'var(--stcm-gw-bg)';
+                
+                const label = el('div', 'stcm-field-content-label', fieldInfo.label);
+                label.style.fontWeight = 'bold';
+                label.style.marginBottom = '8px';
+                label.style.color = '#4a9eff';
+                label.style.fontSize = '13px';
+                
+                const content = el('div', 'stcm-field-content-value');
+                const currentValue = getFieldValue(currentCharacter, fieldKey);
+                content.textContent = currentValue || '(empty)';
+                content.style.fontSize = '12px';
+                content.style.lineHeight = '1.4';
+                content.style.fontFamily = 'monospace';
+                content.style.whiteSpace = 'pre-wrap';
+                content.style.maxHeight = '120px';
+                content.style.overflowY = 'auto';
+                content.style.backgroundColor = 'var(--stcm-input-bg)';
+                content.style.border = '1px solid var(--stcm-input-border)';
+                content.style.borderRadius = '4px';
+                content.style.padding = '8px';
+                
+                fieldContainer.appendChild(label);
+                fieldContainer.appendChild(content);
+                contentSection.appendChild(fieldContainer);
+            });
+        }
+    }
+    
+    // Update context fields content section
+    const contextSection = fieldEditor.querySelector('.stcm-context-content-section');
+    if (contextSection) {
+        // Clear and rebuild the context display
+        contextSection.innerHTML = '';
+        
+        if (contextFields.size === 0) {
+            const noContext = el('div', 'stcm-no-context', 'No fields selected for context.');
+            noContext.style.color = '#888';
+            noContext.style.fontStyle = 'italic';
+            noContext.style.padding = '12px';
+            contextSection.appendChild(noContext);
+        } else {
+            contextFields.forEach(fieldKey => {
+                const fieldInfo = CHARACTER_FIELDS.find(f => f.key === fieldKey) || 
+                                  { key: fieldKey, label: fieldKey, multiline: true };
+                
+                const fieldContainer = el('div', 'stcm-context-content-item');
+                fieldContainer.style.marginBottom = '12px';
+                fieldContainer.style.border = '1px solid var(--stcm-gw-border)';
+                fieldContainer.style.borderRadius = '6px';
+                fieldContainer.style.padding = '8px';
+                fieldContainer.style.backgroundColor = 'var(--stcm-gw-bg)';
+                
+                const label = el('div', 'stcm-context-content-label', fieldInfo.label);
+                label.style.fontWeight = 'bold';
+                label.style.marginBottom = '6px';
+                label.style.color = '#ffaa4a';
+                label.style.fontSize = '12px';
+                
+                const content = el('div', 'stcm-context-content-value');
+                const currentValue = getFieldValue(currentCharacter, fieldKey);
+                content.textContent = currentValue || '(empty)';
+                content.style.fontSize = '11px';
+                content.style.lineHeight = '1.3';
+                content.style.fontFamily = 'monospace';
+                content.style.whiteSpace = 'pre-wrap';
+                content.style.maxHeight = '80px';
+                content.style.overflowY = 'auto';
+                content.style.backgroundColor = 'var(--stcm-input-bg)';
+                content.style.border = '1px solid var(--stcm-input-border)';
+                content.style.borderRadius = '4px';
+                content.style.padding = '6px';
+                
+                fieldContainer.appendChild(label);
+                fieldContainer.appendChild(content);
+                contextSection.appendChild(fieldContainer);
+            });
+        }
+    }
 }
 
 function createFieldEditorPanel() {
@@ -634,6 +750,9 @@ function createFieldSelectionSection() {
         // Save selections
         saveSession();
         
+        // Refresh content display
+        refreshFieldEditorContent();
+        
         toastr.success(`Selected ${allFields.length} fields for ${type} (excluding prompt overrides and metadata)`);
     }
 
@@ -656,6 +775,9 @@ function createFieldSelectionSection() {
 
         // Save selections
         saveSession();
+        
+        // Refresh content display
+        refreshFieldEditorContent();
         
         toastr.success('Cleared all field selections');
     }
@@ -700,7 +822,36 @@ function createChatSection() {
     section.style.height = '100%';
     section.style.minHeight = '400px';
 
-    const chatLog = el('div', 'stcm-gw-log');
+    // Add field content sections before chat
+    const fieldContentHeader = el('h4', null, '📝 Fields to Edit');
+    fieldContentHeader.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; color: #4a9eff;';
+    
+    const fieldContentSection = el('div', 'stcm-field-content-section');
+    fieldContentSection.style.cssText = `
+        border: 1px solid var(--stcm-gw-border);
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background-color: #1a1a1a;
+        max-height: 200px;
+        overflow-y: auto;
+    `;
+    
+    const contextContentHeader = el('h4', null, '📖 Context Fields');
+    contextContentHeader.style.cssText = 'margin: 0 0 8px 0; font-size: 14px; color: #ffaa4a;';
+    
+    const contextContentSection = el('div', 'stcm-context-content-section');
+    contextContentSection.style.cssText = `
+        border: 1px solid var(--stcm-gw-border);
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background-color: #1a1a1a;
+        max-height: 150px;
+        overflow-y: auto;
+    `;
+
+    const chatLog = el('div', 'stcm-gw-log stcm-scroll');
     chatLog.style.flex = '1';
     chatLog.style.overflowY = 'auto';
     chatLog.style.marginBottom = '12px';
@@ -742,7 +893,7 @@ function createChatSection() {
     buttonRow.append(sendBtn, regenBtn, clearBtn);
     composer.append(input, buttonRow);
 
-    section.append(chatLog, composer);
+    section.append(fieldContentHeader, fieldContentSection, contextContentHeader, contextContentSection, chatLog, composer);
     return section;
 }
 
@@ -1517,6 +1668,9 @@ async function onApplyChanges(responseText) {
         
         // Update the character edit panel if it's open
         updateCharacterEditPanel();
+        
+        // Auto-refresh field editor content to show the new values
+        refreshFieldEditorContent();
         
         toastr.success(`Applied changes to ${updatedFields.length} field(s): ${updatedFields.join(', ')}`);
 

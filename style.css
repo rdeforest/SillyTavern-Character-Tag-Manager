@@ -1949,7 +1949,10 @@ dialog.popup #stcm-popup-pin-input:focus {
 #stcm_sidebar_folder_nav *,
 #gw-chat-body,
 #gw-chat-body *,
-.modalBody {
+.stcm-gw-log,
+.modalBody,
+.stcm-scroll,
+.stcm-scroll * {
   scrollbar-width: thin;
   scrollbar-color: #666 #181818; /* thumb, track */
 }
@@ -1958,14 +1961,20 @@ dialog.popup #stcm-popup-pin-input:focus {
 #characterTagManagerModal ::-webkit-scrollbar,
 #stcm_sidebar_folder_nav ::-webkit-scrollbar,
 .modalBody ::-webkit-scrollbar,
-#gw-chat-body ::-webkit-scrollbar {
+#gw-chat-body ::-webkit-scrollbar,
+.stcm-gw-log ::-webkit-scrollbar,
+.stcm-scroll::-webkit-scrollbar,
+.stcm-scroll *::-webkit-scrollbar {
   width: 12px;
   background: #181818;
 }
 #characterTagManagerModal ::-webkit-scrollbar-thumb,
 #stcm_sidebar_folder_nav ::-webkit-scrollbar-thumb,
 .modalBody ::-webkit-scrollbar-thumb,
-#gw-chat-body ::-webkit-scrollbar-thumb  {
+#gw-chat-body ::-webkit-scrollbar-thumb,
+.stcm-gw-log ::-webkit-scrollbar-thumb,
+.stcm-scroll::-webkit-scrollbar-thumb,
+.stcm-scroll *::-webkit-scrollbar-thumb {
   background: #666;
   border-radius: 8px;
   min-height: 24px;
@@ -1974,13 +1983,20 @@ dialog.popup #stcm-popup-pin-input:focus {
 #characterTagManagerModal ::-webkit-scrollbar-thumb:hover,
 #stcm_sidebar_folder_nav ::-webkit-scrollbar-thumb:hover,
 .modalBody ::-webkit-scrollbar-thumb:hover,
-#gw-chat-body ::-webkit-scrollbar-thumb:hover  {
+#gw-chat-body ::-webkit-scrollbar-thumb:hover,
+.stcm-gw-log ::-webkit-scrollbar-thumb:hover,
+.stcm-scroll::-webkit-scrollbar-thumb:hover,
+.stcm-scroll *::-webkit-scrollbar-thumb:hover {
   background: #888;
 }
 #characterTagManagerModal ::-webkit-scrollbar-corner,
 #stcm_sidebar_folder_nav ::-webkit-scrollbar-corner,
 .modalBody ::-webkit-scrollbar-corner,
-#gw-chat-body ::-webkit-scrollbar-corner  {
+#gw-chat-body ::-webkit-scrollbar-corner,
+.stcm-gw-log ::-webkit-scrollbar-corner,
+.stcm-scroll::-webkit-scrollbar-corner,
+.stcm-scroll *::-webkit-scrollbar-corner
+ {
   background: #181818;
 }
 
