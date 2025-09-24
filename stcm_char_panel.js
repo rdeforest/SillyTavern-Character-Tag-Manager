@@ -488,83 +488,138 @@ export function createEditSectionForCharacter(char) {
 
 
     saveBtn.addEventListener('click', async () => {
-        const inputs = section.querySelectorAll('.charEditInput');
-        const payload = {};
-        inputs.forEach(i => {
-            if (!i.readOnly) {
-                if (i.name === 'unified.creator_notes') {
-                    payload.creatorcomment = i.value;
-                    payload.data = payload.data || {};
-                    payload.data.creator_notes = i.value;
-                } else {
-                    const keys = i.name.split('.');
-                    let ref = payload;
-                    while (keys.length > 1) {
-                        const k = keys.shift();
-                        ref[k] = ref[k] || {};
-                        ref = ref[k];
+            const inputs = section.querySelectorAll('.charEditInput');
+            const payload = { avatar: char.avatar };
+            
+            inputs.forEach(i => {
+                if (!i.readOnly) {
+                    if (i.name === 'unified.creator_notes') {
+                        payload.creatorcomment = i.value;
+                        payload.data = payload.data || {};
+                        payload.data.creator_notes = i.value;
+                    } else {
+                        const keys = i.name.split('.');
+                        let ref = payload;
+                        while (keys.length > 1) {
+                            const k = keys.shift();
+                            ref[k] = ref[k] || {};
+                            ref = ref[k];
+                        }
+                        ref[keys[0]] = i.value;
                     }
-                    ref[keys[0]] = i.value;
                 }
-            }
-        });
-
-        try {
-            const csrfRes = await fetch('/csrf-token', { credentials: 'include' });
-            const { token } = csrfRes.ok ? await csrfRes.json() : { token: null };
-
-            const update = Object.assign({}, payload, { avatar: char.avatar });
-
-            const result = await fetch('/api/characters/merge-attributes', {
-                method: 'POST',
-                headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'X-CSRF-Token': token } : {}),
-                credentials: 'include',
-                body: JSON.stringify(update)
             });
 
-            if (result.ok) {
-                // Update the local character object with the saved changes
-                inputs.forEach(input => {
-                    if (!input.readOnly) {
-                        if (input.name === 'unified.creator_notes') {
-                            char.creatorcomment = input.value;
-                            if (!char.data) char.data = {};
-                            char.data.creator_notes = input.value;
-                        } else {
-                            const keys = input.name.split('.');
-                            let ref = char;
-                            while (keys.length > 1) {
-                                const k = keys.shift();
-                                if (!ref[k]) ref[k] = {};
-                                ref = ref[k];
+            try {
+                // Use SillyTavern's native request headers function
+                const ctx = SillyTavern?.getContext?.();
+                const getRequestHeaders = ctx?.getRequestHeaders || window?.getRequestHeaders;
+                if (!getRequestHeaders) {
+                    throw new Error('getRequestHeaders function not available');
+                }
+
+                const result = await fetch('/api/characters/merge-attributes', {
+                    method: 'POST',
+                    headers: getRequestHeaders(),
+                    body: JSON.stringify(payload)
+                });
+
+                if (result.ok) {
+                    // Update the local character object with the saved changes
+                    inputs.forEach(input => {
+                        if (!input.readOnly) {
+                            if (input.name === 'unified.creator_notes') {
+                                char.creatorcomment = input.value;
+                                if (!char.data) char.data = {};
+                                char.data.creator_notes = input.value;
+                            } else {
+                                const keys = input.name.split('.');
+                                let ref = char;
+                                while (keys.length > 1) {
+                                    const k = keys.shift();
+                                    if (!ref[k]) ref[k] = {};
+                                    ref = ref[k];
+                                }
+                                ref[keys[0]] = input.value;
                             }
-                            ref[keys[0]] = input.value;
+                        }
+                    });
+
+                    // Update json_data field if it exists (for persistence)
+                    if (char.json_data) {
+                        try {
+                            const jsonData = JSON.parse(char.json_data);
+                            inputs.forEach(input => {
+                                if (!input.readOnly) {
+                                    if (input.name === 'unified.creator_notes') {
+                                        jsonData.creatorcomment = input.value;
+                                        if (!jsonData.data) jsonData.data = {};
+                                        jsonData.data.creator_notes = input.value;
+                                    } else {
+                                        const keys = input.name.split('.');
+                                        let ref = jsonData;
+                                        while (keys.length > 1) {
+                                            const k = keys.shift();
+                                            if (!ref[k]) ref[k] = {};
+                                            ref = ref[k];
+                                        }
+                                        ref[keys[0]] = input.value;
+                                    }
+                                }
+                            });
+                            char.json_data = JSON.stringify(jsonData);
+                        } catch (e) {
+                            console.warn('[STCM] Failed to update json_data field:', e);
                         }
                     }
-                });
-                
-                toastr.success(`Saved updates to ${char.name}`);
-                renderCharacterList();
-                
-                // Reload SillyTavern's internal character data
-                try {
-                    const { callSaveandReload } = await import("./index.js");
-                    if (typeof callSaveandReload === 'function') {
-                        await callSaveandReload();
+                    
+                    toastr.success(`Saved updates to ${char.name}`);
+                    
+                    // Use SillyTavern's native character refresh methods
+                    if (ctx) {
+                        // Refresh the character list in SillyTavern's UI if available
+                        if (typeof ctx.getCharacters === 'function') {
+                            await ctx.getCharacters();
+                        }
+                        
+                        // Trigger character edited event if available
+                        if (ctx.eventSource && ctx.event_types?.CHARACTER_EDITED) {
+                            ctx.eventSource.emit(ctx.event_types.CHARACTER_EDITED, char);
+                        }
                     }
-                } catch (error) {
-                    console.warn('[STCM] Could not reload SillyTavern character data:', error);
+                    
+                    // Refresh our extension's character list
+                    renderCharacterList();
+                    
+                    // Call our module's save and reload function
+                    try {
+                        const { callSaveandReload } = await import("./index.js");
+                        if (typeof callSaveandReload === 'function') {
+                            await callSaveandReload();
+                        }
+                    } catch (error) {
+                        console.warn('[STCM] Could not call module reload:', error);
+                    }
+                } else {
+                    let errorMessage = 'Failed to save updates.';
+                    try {
+                        const errorJson = await result.json();
+                        if (errorJson.message) {
+                            errorMessage = `Character not saved. Error: ${errorJson.message}`;
+                            if (errorJson.error) {
+                                errorMessage += `. Field: ${errorJson.error}`;
+                            }
+                        }
+                    } catch {
+                        errorMessage = `Failed to save updates. Status: ${result.status} ${result.statusText}`;
+                    }
+                    toastr.error(errorMessage);
                 }
-            } else {
-                let msg = 'Failed to save updates.';
-                try { msg = await result.text(); } catch {}
-                toastr.error(msg || 'Failed to save updates.');
+            } catch (e) {
+                console.warn('[STCM] Save character failed:', e);
+                toastr.error(`Failed to save updates: ${e.message}`);
             }
-        } catch (e) {
-            console.warn('[STCM] Save character failed:', e);
-            toastr.error('Failed to save updates (network/CSRF).');
-        }
-    });
+        });
 
     btnRow.appendChild(saveBtn);
     section.appendChild(btnRow);

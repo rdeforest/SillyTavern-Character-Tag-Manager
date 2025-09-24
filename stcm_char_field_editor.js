@@ -112,8 +112,8 @@ function spacer() {
 // Get field value from character object using dot notation
 function getFieldValue(char, fieldKey) {
     if (fieldKey === 'alternate_greetings') {
-        // Handle alternate greetings as array, extracting .mes property if objects
-        const greetings = char?.alternate_greetings || [];
+        // Handle alternate greetings - check both root level and data.alternate_greetings
+        const greetings = char?.data?.alternate_greetings || char?.alternate_greetings || [];
         if (!Array.isArray(greetings)) return '';
         
         const messages = greetings.map(greeting => {
@@ -131,7 +131,7 @@ function getFieldValue(char, fieldKey) {
         const match = fieldKey.match(/alternate_greetings\[(\d+)\](?:\.mes)?/);
         if (match) {
             const index = parseInt(match[1]);
-            const greetings = char?.alternate_greetings || [];
+            const greetings = char?.data?.alternate_greetings || char?.alternate_greetings || [];
             const greeting = greetings[index];
             
             // If accessing .mes property or the greeting is an object with mes
@@ -141,6 +141,12 @@ function getFieldValue(char, fieldKey) {
             // Otherwise return the full greeting (backward compatibility)
             return greeting || '';
         }
+    }
+    
+    // Handle root-level fields that might also exist in data
+    if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
+        // Use data field if available, otherwise fall back to root level
+        return char?.data?.[fieldKey] || char?.[fieldKey] || '';
     }
     
     const keys = fieldKey.split('.');
@@ -157,6 +163,10 @@ function setFieldValue(char, fieldKey, newValue) {
         // Handle alternate greetings as array, creating objects with .mes property
         const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
         const greetings = messages.map(mes => ({ mes }));
+        
+        // Set in both locations to ensure compatibility
+        if (!char.data) char.data = {};
+        char.data.alternate_greetings = greetings;
         char.alternate_greetings = greetings;
         return;
     }
@@ -166,9 +176,14 @@ function setFieldValue(char, fieldKey, newValue) {
         const match = fieldKey.match(/alternate_greetings\[(\d+)\](?:\.mes)?/);
         if (match) {
             const index = parseInt(match[1]);
+            if (!char.data) char.data = {};
+            if (!char.data.alternate_greetings) char.data.alternate_greetings = [];
             if (!char.alternate_greetings) char.alternate_greetings = [];
             
-            // Ensure the greeting object exists
+            // Ensure the greeting object exists in both locations
+            if (!char.data.alternate_greetings[index]) {
+                char.data.alternate_greetings[index] = { mes: '' };
+            }
             if (!char.alternate_greetings[index]) {
                 char.alternate_greetings[index] = { mes: '' };
             }
@@ -176,21 +191,35 @@ function setFieldValue(char, fieldKey, newValue) {
             // If accessing .mes property specifically
             if (fieldKey.includes('.mes')) {
                 // Ensure it's an object with mes property
+                if (typeof char.data.alternate_greetings[index] === 'string') {
+                    char.data.alternate_greetings[index] = { mes: char.data.alternate_greetings[index] };
+                }
                 if (typeof char.alternate_greetings[index] === 'string') {
                     char.alternate_greetings[index] = { mes: char.alternate_greetings[index] };
                 }
+                char.data.alternate_greetings[index].mes = newValue;
                 char.alternate_greetings[index].mes = newValue;
             } else {
                 // Backward compatibility: set the whole greeting
-                // If it's meant to be an object, create it with mes property
                 if (newValue && typeof newValue === 'string') {
+                    char.data.alternate_greetings[index] = { mes: newValue };
                     char.alternate_greetings[index] = { mes: newValue };
                 } else {
+                    char.data.alternate_greetings[index] = newValue;
                     char.alternate_greetings[index] = newValue;
                 }
             }
             return;
         }
+    }
+    
+    // Handle root-level fields that should be mirrored in data
+    if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
+        // Set both root level and data field
+        char[fieldKey] = newValue;
+        if (!char.data) char.data = {};
+        char.data[fieldKey] = newValue;
+        return;
     }
     
     const keys = fieldKey.split('.');
@@ -1564,52 +1593,127 @@ function updateCharacterEditPanel() {
 
 async function saveCharacterChanges(character, changes) {
     try {
-        const csrfRes = await fetch('/csrf-token', { credentials: 'include' });
-        const { token } = csrfRes.ok ? await csrfRes.json() : { token: null };
-
+        ensureCtx();
+        
         const payload = { avatar: character.avatar };
         
         // Build the update payload using the same structure as the character panel
         for (const [fieldKey, newValue] of Object.entries(changes)) {
-            const keys = fieldKey.split('.');
-            let ref = payload;
-            while (keys.length > 1) {
-                const k = keys.shift();
-                ref[k] = ref[k] || {};
-                ref = ref[k];
+            // Handle root-level fields specially
+            if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
+                // Set both root level and in data object
+                payload[fieldKey] = newValue;
+                if (!payload.data) payload.data = {};
+                payload.data[fieldKey] = newValue;
+            } else if (fieldKey === 'alternate_greetings') {
+                // Handle alternate greetings specially
+                const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
+                const greetings = messages.map(mes => ({ mes }));
+                payload.alternate_greetings = greetings;
+                if (!payload.data) payload.data = {};
+                payload.data.alternate_greetings = greetings;
+            } else {
+                // Handle nested fields normally
+                const keys = fieldKey.split('.');
+                let ref = payload;
+                while (keys.length > 1) {
+                    const k = keys.shift();
+                    ref[k] = ref[k] || {};
+                    ref = ref[k];
+                }
+                ref[keys[0]] = newValue;
             }
-            ref[keys[0]] = newValue;
+        }
+
+        // Use SillyTavern's native request headers function
+        const getRequestHeaders = ctx?.getRequestHeaders || window?.getRequestHeaders;
+        if (!getRequestHeaders) {
+            throw new Error('getRequestHeaders function not available');
         }
 
         const result = await fetch('/api/characters/merge-attributes', {
             method: 'POST',
-            headers: Object.assign(
-                { 'Content-Type': 'application/json' }, 
-                token ? { 'X-CSRF-Token': token } : {}
-            ),
-            credentials: 'include',
+            headers: getRequestHeaders(),
             body: JSON.stringify(payload)
         });
 
         if (!result.ok) {
-            let msg = 'Failed to save character changes.';
-            try { msg = await result.text(); } catch {}
-            throw new Error(msg);
+            let errorMessage = 'Failed to save character changes.';
+            try {
+                const errorJson = await result.json();
+                if (errorJson.message) {
+                    errorMessage = `Character not saved. Error: ${errorJson.message}`;
+                    if (errorJson.error) {
+                        errorMessage += `. Field: ${errorJson.error}`;
+                    }
+                }
+            } catch {
+                errorMessage = `Failed to save character changes. Status: ${result.status} ${result.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
 
-        // Refresh character list and reload SillyTavern's character data
+        // Update the local character object with new values
+        for (const [fieldKey, newValue] of Object.entries(changes)) {
+            setFieldValue(currentCharacter, fieldKey, newValue);
+        }
+
+        // Update json_data field if it exists (for persistence)
+        if (currentCharacter.json_data) {
+            try {
+                const jsonData = JSON.parse(currentCharacter.json_data);
+                for (const [fieldKey, newValue] of Object.entries(changes)) {
+                    // Apply the same logic to json_data
+                    if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
+                        jsonData[fieldKey] = newValue;
+                        if (!jsonData.data) jsonData.data = {};
+                        jsonData.data[fieldKey] = newValue;
+                    } else if (fieldKey === 'alternate_greetings') {
+                        const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
+                        const greetings = messages.map(mes => ({ mes }));
+                        jsonData.alternate_greetings = greetings;
+                        if (!jsonData.data) jsonData.data = {};
+                        jsonData.data.alternate_greetings = greetings;
+                    } else {
+                        const keys = fieldKey.split('.');
+                        let ref = jsonData;
+                        while (keys.length > 1) {
+                            const k = keys.shift();
+                            if (!ref[k]) ref[k] = {};
+                            ref = ref[k];
+                        }
+                        ref[keys[0]] = newValue;
+                    }
+                }
+                currentCharacter.json_data = JSON.stringify(jsonData);
+            } catch (e) {
+                console.warn('[STCM Field Editor] Failed to update json_data field:', e);
+            }
+        }
+
+        // Use SillyTavern's native character refresh methods
+        if (typeof ctx?.getCharacters === 'function') {
+            await ctx.getCharacters();
+        }
+        
+        // Trigger character list refresh event if available
+        if (ctx?.eventSource && ctx?.event_types?.CHARACTER_EDITED) {
+            ctx.eventSource.emit(ctx.event_types.CHARACTER_EDITED, character);
+        }
+        
+        // Refresh our extension's character list
         if (typeof renderCharacterList === 'function') {
             renderCharacterList();
         }
         
-        // Reload SillyTavern's internal character data
+        // Call our module's save and reload function
         try {
             const { callSaveandReload } = await import("./index.js");
             if (typeof callSaveandReload === 'function') {
                 await callSaveandReload();
             }
         } catch (error) {
-            console.warn('[STCM Field Editor] Could not reload SillyTavern character data:', error);
+            console.warn('[STCM Field Editor] Could not call module reload:', error);
         }
 
     } catch (error) {

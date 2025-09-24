@@ -15,7 +15,7 @@ import {
 } from './utils.js';
 
 import { tags, tag_map, removeTagFromEntity } from "../../../tags.js";
-import { characters, selectCharacterById } from "../../../../script.js";
+import { characters, selectCharacterById, deleteCharacter } from "../../../../script.js";
 import { groups, getGroupAvatar } from "../../../../scripts/group-chats.js";
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from "../../../popup.js";
 import { callSaveandReload } from "./index.js";
@@ -458,34 +458,23 @@ async function renderCharacterList() {
             );
             if (confirmed !== POPUP_RESULT.AFFIRMATIVE) return;
 
-            const csrf = await fetch('/csrf-token');
-            const { token } = await csrf.json();
-
-            const result = await fetch('/api/characters/delete', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': token
-                },
-                body: JSON.stringify({
-                    avatar_url: entity.avatar,
-                    delete_chats: true
-                })
-            });
-
-            if (!result.ok) {
-                toastr.error(`Failed to delete character "${entity.name}".`, 'Delete Error');
+            try {
+                // Use SillyTavern's exported deleteCharacter function
+                const charIndex = characters.findIndex(c => c.avatar === entity.avatar);
+                if (charIndex !== -1) {
+                    await deleteCharacter(entity.avatar, { deleteChats: true });
+                    toastr.success(`Character "${entity.name}" permanently deleted.`);
+                } else {
+                    toastr.error(`Character "${entity.name}" not found.`);
+                    return;
+                }
+            } catch (error) {
+                console.error('[STCM] Delete character failed:', error);
+                toastr.error(`Failed to delete character "${entity.name}".`);
                 return;
             }
 
-            const idx = characters.findIndex(c => c.avatar === entity.id);
-            if (idx !== -1) {
-                const char = characters.splice(idx, 1)[0];
-                delete tag_map[char.avatar];
-                SillyTavern.getContext().eventSource.emit(SillyTavern.getContext().event_types.CHARACTER_DELETED, char);
-            }
-
-            toastr.error(`Character "${entity.name}" permanently deleted.`, 'Delete Successful');
+            // Refresh our extension's UI
             callSaveandReload();
             renderTagSection();
             renderCharacterList();
