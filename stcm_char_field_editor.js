@@ -543,6 +543,7 @@ function createFieldSelectionSection() {
         font-size: 11px;
         color: #aaa;
         line-height: 1.4;
+        font-size: .9em;
     `;
     instructions.innerHTML = `
         <strong>How to use:</strong><br>
@@ -697,6 +698,7 @@ function createChatSection() {
     section.style.flexDirection = 'column';
     section.style.height = '100%';
     section.style.minHeight = '400px';
+    section.style.maxHeight = '600px';
 
     const chatLog = el('div', 'stcm-gw-log stcm-scroll');
     chatLog.style.flex = '1';
@@ -1595,9 +1597,19 @@ async function saveCharacterChanges(character, changes) {
             throw new Error(msg);
         }
 
-        // Refresh character list if available
+        // Refresh character list and reload SillyTavern's character data
         if (typeof renderCharacterList === 'function') {
             renderCharacterList();
+        }
+        
+        // Reload SillyTavern's internal character data
+        try {
+            const { callSaveandReload } = await import("./index.js");
+            if (typeof callSaveandReload === 'function') {
+                await callSaveandReload();
+            }
+        } catch (error) {
+            console.warn('[STCM Field Editor] Could not reload SillyTavern character data:', error);
         }
 
     } catch (error) {

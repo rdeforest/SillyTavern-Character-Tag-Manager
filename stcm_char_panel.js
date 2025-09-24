@@ -1,4 +1,5 @@
 import { renderCharacterList } from "./stcm_characters.js";
+import { callSaveandReload } from "./index.js";
 // ============================================================================
 // stcm_char_panel.js
 // ----------------------------------------------------------------------------
@@ -524,7 +525,9 @@ export function createEditSectionForCharacter(char) {
 
             if (result.ok) {
                 toastr.success(`Saved updates to ${char.name}`);
-                renderCharacterList();
+                
+                // Reload SillyTavern's internal character data and refresh UI
+                await callSaveandReload();
             } else {
                 let msg = 'Failed to save updates.';
                 try { msg = await result.text(); } catch {}
