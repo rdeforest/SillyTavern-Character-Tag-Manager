@@ -672,7 +672,7 @@ function openCharEditModal(char) {
   
       const fieldEditorBtn = document.createElement('button');
       fieldEditorBtn.className = 'stcm_menu_button interactable';
-      fieldEditorBtn.textContent = '🎭 Field Editor';
+      fieldEditorBtn.textContent = 'AI Char Edit';
       fieldEditorBtn.title = 'Edit character fields with AI assistance';
       fieldEditorBtn.style.marginRight = '8px';
       fieldEditorBtn.onclick = () => openCharacterFieldEditor(char);

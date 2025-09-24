@@ -637,6 +637,35 @@ font-size: .9em;
 
 .stcm-edit-checkbox, .stcm-context-checkbox {
     resize: none!important;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 3px;
+    background-color: var(--SmartThemeBodyColor);
+    box-shadow: inset 0 0 2px 0 var(--SmartThemeShadowColor);
+    cursor: pointer;
+    position: relative;
+    display: grid;
+    place-content: center;
+    filter: brightness(1.2);
+}
+
+.stcm-edit-checkbox::before, .stcm-context-checkbox::before {
+    content: "";
+    width: 0.65em;
+    height: 0.65em;
+    transform: scale(0);
+    transition: 120ms transform ease-in-out;
+    box-shadow: inset 1em 1em var(--SmartThemeCheckboxTickColor, #4a9eff);
+    transform-origin: bottom left;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+
+.stcm-edit-checkbox:checked::before, .stcm-context-checkbox:checked::before {
+    transform: scale(1);
 }
 
 /* Labels */
