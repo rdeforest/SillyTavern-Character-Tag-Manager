@@ -17,6 +17,7 @@ const CHARACTER_FIELDS = [
     { key: 'scenario', label: 'Scenario', multiline: true, category: 'basics', readonly: false },
     { key: 'first_mes', label: 'First Message', multiline: true, category: 'basics', readonly: false },
     { key: 'mes_example', label: 'Examples of Dialogue', multiline: true, category: 'basics', readonly: false },
+    { key: 'alternate_greetings', label: 'Alternate Greetings', multiline: true, category: 'basics', readonly: false, isArray: true },
     { key: 'data.system_prompt', label: 'Main Prompt', multiline: true, category: 'advanced', readonly: false },
     { key: 'data.post_history_instructions', label: 'Post-History Instructions', multiline: true, category: 'advanced', readonly: false },
     { key: 'data.extensions.depth_prompt.prompt', label: 'Character Note', multiline: false, category: 'advanced', readonly: false },
@@ -110,6 +111,22 @@ function spacer() {
 
 // Get field value from character object using dot notation
 function getFieldValue(char, fieldKey) {
+    if (fieldKey === 'alternate_greetings') {
+        // Handle alternate greetings as array
+        const greetings = char?.alternate_greetings || [];
+        return Array.isArray(greetings) ? greetings.join('\n\n---\n\n') : '';
+    }
+    
+    // Handle individual alternate greetings
+    if (fieldKey.startsWith('alternate_greetings[')) {
+        const match = fieldKey.match(/alternate_greetings\[(\d+)\]/);
+        if (match) {
+            const index = parseInt(match[1]);
+            const greetings = char?.alternate_greetings || [];
+            return greetings[index] || '';
+        }
+    }
+    
     const keys = fieldKey.split('.');
     let value = char;
     for (const key of keys) {
@@ -120,6 +137,24 @@ function getFieldValue(char, fieldKey) {
 
 // Set field value in character object using dot notation
 function setFieldValue(char, fieldKey, newValue) {
+    if (fieldKey === 'alternate_greetings') {
+        // Handle alternate greetings as array
+        const greetings = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
+        char.alternate_greetings = greetings;
+        return;
+    }
+    
+    // Handle individual alternate greetings
+    if (fieldKey.startsWith('alternate_greetings[')) {
+        const match = fieldKey.match(/alternate_greetings\[(\d+)\]/);
+        if (match) {
+            const index = parseInt(match[1]);
+            if (!char.alternate_greetings) char.alternate_greetings = [];
+            char.alternate_greetings[index] = newValue;
+            return;
+        }
+    }
+    
     const keys = fieldKey.split('.');
     const lastKey = keys.pop();
     let target = char;
@@ -164,6 +199,7 @@ function buildSystemPrompt() {
         '• For scenarios, set up engaging situations that showcase the character',
         '• For dialogue examples, match the character\'s speaking style and personality',
         '• For first messages, create engaging opening scenes that draw the user in',
+        '• For alternate greetings, create varied opening scenarios separated by "\\n\\n---\\n\\n"',
         '',
         'RESPONSE FORMAT:',
         'Return ONLY a valid JSON object with the field keys and new values. Use the exact field keys shown in the current data below.',
@@ -172,7 +208,8 @@ function buildSystemPrompt() {
         '{',
         '  "description": "New description text...",',
         '  "personality": "Updated personality traits...",',
-        '  "scenario": "New scenario setup..."',
+        '  "scenario": "New scenario setup...",',
+        '  "alternate_greetings": "First greeting...\\n\\n---\\n\\nSecond greeting..."',
         '}',
         '',
         'CRITICAL RULES:',
@@ -438,6 +475,29 @@ function createFieldSelectionSection() {
         contextFieldList.appendChild(contextRow);
     });
 
+    // Add individual alternate greetings if they exist
+    if (currentCharacter?.alternate_greetings?.length > 0) {
+        currentCharacter.alternate_greetings.forEach((greeting, index) => {
+            const fieldKey = `alternate_greetings[${index}]`;
+            const dynamicField = {
+                key: fieldKey,
+                label: `Alternate Greeting ${index + 1}`,
+                multiline: true,
+                category: 'basics',
+                readonly: false,
+                isDynamic: true
+            };
+
+            // Edit field checkbox
+            const editRow = createFieldCheckbox(dynamicField, 'edit');
+            editFieldList.appendChild(editRow);
+
+            // Context field checkbox  
+            const contextRow = createFieldCheckbox(dynamicField, 'context');
+            contextFieldList.appendChild(contextRow);
+        });
+    }
+
     section.append(
         editTitle, 
         editControls, 
@@ -567,6 +627,7 @@ function updateSidePanelCheckboxes() {
     
     if (!panel) return;
 
+    // Update static CHARACTER_FIELDS checkboxes
     CHARACTER_FIELDS.forEach(field => {
         // Update edit checkboxes
         const editCheckbox = panel.querySelector(`#field-edit-${field.key}`);
@@ -579,6 +640,19 @@ function updateSidePanelCheckboxes() {
         if (contextCheckbox) {
             contextCheckbox.checked = contextFields.has(field.key);
         }
+    });
+    
+    // Update dynamic alternate greeting checkboxes
+    const allEditCheckboxes = panel.querySelectorAll('[id^="field-edit-alternate_greetings["]');
+    allEditCheckboxes.forEach(checkbox => {
+        const fieldKey = checkbox.id.replace('field-edit-', '');
+        checkbox.checked = selectedFields.has(fieldKey);
+    });
+    
+    const allContextCheckboxes = panel.querySelectorAll('[id^="field-context-alternate_greetings["]');
+    allContextCheckboxes.forEach(checkbox => {
+        const fieldKey = checkbox.id.replace('field-context-', '');
+        checkbox.checked = contextFields.has(fieldKey);
     });
 }
 
@@ -646,10 +720,13 @@ function appendBubble(role, text, opts = {}) {
 
         const applyBtn = mkBtn('Apply', 'warn');
         const copyBtn = mkBtn('Copy', 'info');
+        const deleteBtn = mkBtn('Delete', 'ghost');
         applyBtn.style.fontSize = '11px';
         applyBtn.style.padding = '3px 6px';
         copyBtn.style.fontSize = '11px';
         copyBtn.style.padding = '3px 6px';
+        deleteBtn.style.fontSize = '11px';
+        deleteBtn.style.padding = '3px 6px';
 
         applyBtn.addEventListener('click', () => onApplyChanges(text));
         copyBtn.addEventListener('click', () => {
@@ -657,8 +734,9 @@ function appendBubble(role, text, opts = {}) {
             navigator.clipboard.writeText(formattedText);
             toastr.success('Copied formatted text to clipboard');
         });
+        deleteBtn.addEventListener('click', () => onDeleteMessage(wrap));
 
-        bar.append(applyBtn, copyBtn);
+        bar.append(applyBtn, copyBtn, deleteBtn);
         bubble.appendChild(bar);
     }
 
@@ -708,9 +786,17 @@ function formatJsonResponse(text) {
             // Format the content nicely
             let displayValue = value;
             if (typeof value === 'string') {
-                // Replace newlines and format dialogue examples nicely
-                displayValue = value
-                    .trim();
+                if (key === 'alternate_greetings') {
+                    // Format alternate greetings with separators
+                    displayValue = value.replace(/\n\n---\n\n/g, '\n\n🔄 ALTERNATE GREETING 🔄\n\n');
+                } else {
+                    // Replace newlines and format dialogue examples nicely
+                    displayValue = value
+                        .replace(/<START>/g, '\n🎬 START\n')
+                        .replace(/{{char}}:/g, '🎭 Character:')
+                        .replace(/{{user}}:/g, '👤 User:')
+                        .trim();
+                }
             }
             
             fieldContent.textContent = displayValue;
@@ -741,12 +827,17 @@ function formatJsonToText(text) {
             // Format the content nicely for copying
             let displayValue = value;
             if (typeof value === 'string') {
-                // Clean up formatting for text copying
-                displayValue = value
-                    .replace(/<START>/g, '\n--- START ---\n')
-                    .replace(/{{char}}:/g, 'Character:')
-                    .replace(/{{user}}:/g, 'User:')
-                    .trim();
+                if (key === 'alternate_greetings') {
+                    // Format alternate greetings with clear separators
+                    displayValue = value.replace(/\n\n---\n\n/g, '\n\n=== NEXT GREETING ===\n\n');
+                } else {
+                    // Clean up formatting for text copying
+                    displayValue = value
+                        .replace(/<START>/g, '\n--- START ---\n')
+                        .replace(/{{char}}:/g, 'Character:')
+                        .replace(/{{user}}:/g, 'User:')
+                        .trim();
+                }
             }
             
             formattedText += displayValue;
@@ -757,6 +848,50 @@ function formatJsonToText(text) {
         // If it's not valid JSON, return the original text
         return text;
     }
+}
+
+function onDeleteMessage(messageWrap) {
+    if (!currentCharacter || !messageWrap) return;
+    
+    const timestamp = messageWrap.dataset.ts;
+    const role = messageWrap.dataset.role;
+    
+    if (!timestamp) return;
+    
+    // Find and remove the message from miniTurns
+    const messageIndex = miniTurns.findIndex(turn => turn.ts == timestamp && turn.role === role);
+    if (messageIndex !== -1) {
+        miniTurns.splice(messageIndex, 1);
+        
+        // If we deleted an assistant message, also remove the preceding user message if it exists
+        if (role === 'assistant' && messageIndex > 0) {
+            const prevTurn = miniTurns[messageIndex - 1];
+            if (prevTurn && prevTurn.role === 'user') {
+                // Ask user if they want to remove the user message too
+                const removeUserMsg = confirm('Also remove the user message that prompted this response?');
+                if (removeUserMsg) {
+                    miniTurns.splice(messageIndex - 1, 1);
+                    
+                    // Remove the user message from DOM
+                    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+                    const editModal = document.getElementById(editModalId);
+                    const chatLog = editModal?.querySelector('.stcm-gw-log');
+                    const userMsgWrap = chatLog?.querySelector(`.gw-row[data-ts="${prevTurn.ts}"][data-role="user"]`);
+                    if (userMsgWrap) {
+                        userMsgWrap.remove();
+                    }
+                }
+            }
+        }
+    }
+    
+    // Remove the message from DOM
+    messageWrap.remove();
+    
+    // Save updated session
+    saveSession();
+    
+    toastr.success('Message deleted');
 }
 
 function onClearConversation() {
