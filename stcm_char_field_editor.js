@@ -574,6 +574,7 @@ function createChatSection() {
     section.style.display = 'flex';
     section.style.flexDirection = 'column';
     section.style.height = '100%';
+    section.style.minHeight = '400px';
 
     const chatLog = el('div', 'stcm-gw-log');
     chatLog.style.flex = '1';

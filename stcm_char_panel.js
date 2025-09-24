@@ -73,75 +73,96 @@ export function createEditSectionForCharacter(char) {
         checkboxContainer.style.cssText = `
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            align-items: center;
             margin-left: 8px;
-            align-items: flex-start;
+            min-width: 32px;
+            gap: 2px;
         `;
 
         if (!readonly) {
-            // Edit checkbox
-            const editCheckWrapper = document.createElement('div');
-            editCheckWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; font-size: 11px;';
+            // Header with icons
+            const iconHeader = document.createElement('div');
+            iconHeader.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2px;
+                margin-bottom: 4px;
+            `;
+
+            // Edit icon (pencil)
+            const editIcon = document.createElement('div');
+            editIcon.style.cssText = `
+                font-size: 12px;
+                color: #4a9eff;
+                cursor: default;
+                user-select: none;
+            `;
+            editIcon.textContent = '✏️';
+            editIcon.title = 'Edit';
+
+            // Context icon (book)
+            const contextIcon = document.createElement('div');
+            contextIcon.style.cssText = `
+                font-size: 12px;
+                color: #ffaa4a;
+                cursor: default;
+                user-select: none;
+            `;
+            contextIcon.textContent = '📖';
+            contextIcon.title = 'Context';
+
+            iconHeader.append(editIcon, contextIcon);
+
+            // Checkbox column
+            const checkboxColumn = document.createElement('div');
+            checkboxColumn.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2px;
+            `;
             
+            // Edit checkbox
             const editCheck = document.createElement('input');
             editCheck.type = 'checkbox';
             editCheck.id = `stcm-edit-${path.replace(/\./g, '-')}`;
             editCheck.className = 'stcm-edit-checkbox';
             editCheck.dataset.fieldKey = path;
-            editCheck.style.margin = '0';
+            editCheck.style.cssText = 'margin: 0; cursor: pointer;';
             
             // Add event listener to sync with field editor if open
             editCheck.addEventListener('change', () => {
-                // Notify field editor if it's open
                 const fieldEditorPanel = document.querySelector('.stcm-field-editor-panel');
                 if (fieldEditorPanel) {
                     setTimeout(() => {
-                        // Use a small delay to ensure all checkboxes are processed
                         const syncEvent = new CustomEvent('stcm-sync-field-selections');
                         document.dispatchEvent(syncEvent);
                     }, 10);
                 }
             });
-            
-            const editLabel = document.createElement('label');
-            editLabel.htmlFor = editCheck.id;
-            editLabel.textContent = 'Edit';
-            editLabel.style.cssText = 'cursor: pointer; color: #4a9eff; font-weight: normal; user-select: none;';
-            
-            editCheckWrapper.append(editCheck, editLabel);
 
             // Context checkbox
-            const contextCheckWrapper = document.createElement('div');
-            contextCheckWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; font-size: 11px;';
-            
             const contextCheck = document.createElement('input');
             contextCheck.type = 'checkbox';
             contextCheck.id = `stcm-context-${path.replace(/\./g, '-')}`;
             contextCheck.className = 'stcm-context-checkbox';
             contextCheck.dataset.fieldKey = path;
-            contextCheck.style.margin = '0';
+            contextCheck.style.cssText = 'margin: 0; cursor: pointer;';
             
             // Add event listener to sync with field editor if open
             contextCheck.addEventListener('change', () => {
-                // Notify field editor if it's open
                 const fieldEditorPanel = document.querySelector('.stcm-field-editor-panel');
                 if (fieldEditorPanel) {
                     setTimeout(() => {
-                        // Use a small delay to ensure all checkboxes are processed
                         const syncEvent = new CustomEvent('stcm-sync-field-selections');
                         document.dispatchEvent(syncEvent);
                     }, 10);
                 }
             });
-            
-            const contextLabel = document.createElement('label');
-            contextLabel.htmlFor = contextCheck.id;
-            contextLabel.textContent = 'Context';
-            contextLabel.style.cssText = 'cursor: pointer; color: #ffaa4a; font-weight: normal; user-select: none;';
-            
-            contextCheckWrapper.append(contextCheck, contextLabel);
 
-            checkboxContainer.append(editCheckWrapper, contextCheckWrapper);
+            checkboxColumn.append(editCheck, contextCheck);
+            checkboxContainer.append(iconHeader, checkboxColumn);
         }
 
         row.appendChild(lbl);
@@ -275,20 +296,69 @@ export function createEditSectionForCharacter(char) {
             checkboxContainer.style.cssText = `
                 display: flex;
                 flex-direction: column;
-                gap: 4px;
-                align-items: flex-start;
+                align-items: center;
+                min-width: 32px;
+                gap: 2px;
             `;
 
-            // Edit checkbox for full greeting object
-            const editCheckWrapper = document.createElement('div');
-            editCheckWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; font-size: 11px;';
+            // Header with icons (only show once for first greeting)
+            if (idx === 0) {
+                const iconHeader = document.createElement('div');
+                iconHeader.style.cssText = `
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                    margin-bottom: 4px;
+                `;
+
+                // Edit icon (pencil)
+                const editIcon = document.createElement('div');
+                editIcon.style.cssText = `
+                    font-size: 12px;
+                    color: #4a9eff;
+                    cursor: default;
+                    user-select: none;
+                `;
+                editIcon.textContent = '✏️';
+                editIcon.title = 'Edit';
+
+                // Context icon (book)
+                const contextIcon = document.createElement('div');
+                contextIcon.style.cssText = `
+                    font-size: 12px;
+                    color: #ffaa4a;
+                    cursor: default;
+                    user-select: none;
+                `;
+                contextIcon.textContent = '📖';
+                contextIcon.title = 'Context';
+
+                iconHeader.append(editIcon, contextIcon);
+                checkboxContainer.appendChild(iconHeader);
+            } else {
+                // Add spacer for alignment with first greeting
+                const spacer = document.createElement('div');
+                spacer.style.height = '28px'; // Match icon header height
+                checkboxContainer.appendChild(spacer);
+            }
+
+            // Checkbox column
+            const checkboxColumn = document.createElement('div');
+            checkboxColumn.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2px;
+            `;
             
+            // Edit checkbox (for the greeting message)
             const editCheck = document.createElement('input');
             editCheck.type = 'checkbox';
             editCheck.id = `stcm-edit-alternate_greetings-${idx}`;
             editCheck.className = 'stcm-edit-checkbox';
-            editCheck.dataset.fieldKey = `alternate_greetings[${idx}]`;
-            editCheck.style.margin = '0';
+            editCheck.dataset.fieldKey = `alternate_greetings[${idx}].mes`;
+            editCheck.style.cssText = 'margin: 0; cursor: pointer;';
             
             // Add event listener to sync with field editor if open
             editCheck.addEventListener('change', () => {
@@ -300,69 +370,28 @@ export function createEditSectionForCharacter(char) {
                     }, 10);
                 }
             });
-            
-            const editLabel = document.createElement('label');
-            editLabel.htmlFor = editCheck.id;
-            editLabel.textContent = 'Edit';
-            editLabel.style.cssText = 'cursor: pointer; color: #4a9eff; font-weight: normal; user-select: none;';
-            
-            editCheckWrapper.append(editCheck, editLabel);
 
-            // Edit checkbox for just the message
-            const mesEditCheckWrapper = document.createElement('div');
-            mesEditCheckWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; font-size: 11px;';
-            
-            const mesEditCheck = document.createElement('input');
-            mesEditCheck.type = 'checkbox';
-            mesEditCheck.id = `stcm-edit-alternate_greetings-${idx}-mes`;
-            mesEditCheck.className = 'stcm-edit-checkbox';
-            mesEditCheck.dataset.fieldKey = `alternate_greetings[${idx}].mes`;
-            mesEditCheck.style.margin = '0';
-            
-            const mesEditLabel = document.createElement('label');
-            mesEditLabel.htmlFor = mesEditCheck.id;
-            mesEditLabel.textContent = 'Edit Msg';
-            mesEditLabel.style.cssText = 'cursor: pointer; color: #4a9eff; font-weight: normal; user-select: none; font-size: 10px;';
-            
-            mesEditCheckWrapper.append(mesEditCheck, mesEditLabel);
-
-            // Context checkbox for full greeting object
-            const contextCheckWrapper = document.createElement('div');
-            contextCheckWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; font-size: 11px;';
-            
+            // Context checkbox (for the greeting message)
             const contextCheck = document.createElement('input');
             contextCheck.type = 'checkbox';
             contextCheck.id = `stcm-context-alternate_greetings-${idx}`;
             contextCheck.className = 'stcm-context-checkbox';
-            contextCheck.dataset.fieldKey = `alternate_greetings[${idx}]`;
-            contextCheck.style.margin = '0';
+            contextCheck.dataset.fieldKey = `alternate_greetings[${idx}].mes`;
+            contextCheck.style.cssText = 'margin: 0; cursor: pointer;';
             
-            const contextLabel = document.createElement('label');
-            contextLabel.htmlFor = contextCheck.id;
-            contextLabel.textContent = 'Context';
-            contextLabel.style.cssText = 'cursor: pointer; color: #ffaa4a; font-weight: normal; user-select: none;';
-            
-            contextCheckWrapper.append(contextCheck, contextLabel);
+            // Add event listener to sync with field editor if open
+            contextCheck.addEventListener('change', () => {
+                const fieldEditorPanel = document.querySelector('.stcm-field-editor-panel');
+                if (fieldEditorPanel) {
+                    setTimeout(() => {
+                        const syncEvent = new CustomEvent('stcm-sync-field-selections');
+                        document.dispatchEvent(syncEvent);
+                    }, 10);
+                }
+            });
 
-            // Context checkbox for just the message
-            const mesContextCheckWrapper = document.createElement('div');
-            mesContextCheckWrapper.style.cssText = 'display: flex; align-items: center; gap: 4px; font-size: 11px;';
-            
-            const mesContextCheck = document.createElement('input');
-            mesContextCheck.type = 'checkbox';
-            mesContextCheck.id = `stcm-context-alternate_greetings-${idx}-mes`;
-            mesContextCheck.className = 'stcm-context-checkbox';
-            mesContextCheck.dataset.fieldKey = `alternate_greetings[${idx}].mes`;
-            mesContextCheck.style.margin = '0';
-            
-            const mesContextLabel = document.createElement('label');
-            mesContextLabel.htmlFor = mesContextCheck.id;
-            mesContextLabel.textContent = 'Ctx Msg';
-            mesContextLabel.style.cssText = 'cursor: pointer; color: #ffaa4a; font-weight: normal; user-select: none; font-size: 10px;';
-            
-            mesContextCheckWrapper.append(mesContextCheck, mesContextLabel);
-
-            checkboxContainer.append(editCheckWrapper, mesEditCheckWrapper, contextCheckWrapper, mesContextCheckWrapper);
+            checkboxColumn.append(editCheck, contextCheck);
+            checkboxContainer.appendChild(checkboxColumn);
 
             const del = document.createElement('button');
             del.className = 'stcm_menu_button small';
