@@ -635,6 +635,11 @@ font-size: .9em;
     width: 100%;
 }
 
+.stcm_field_editor_btn {
+    background-color: #3d8b44!important;
+  color: white!important;
+}
+
 .stcm-edit-checkbox, .stcm-context-checkbox {
     resize: none!important;
     -webkit-appearance: checkbox!important;

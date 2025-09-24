@@ -552,6 +552,114 @@ function createFieldSelectionSection() {
         toastr.success('Field selections updated from main panel');
     });
 
+    // Select All buttons container
+    const selectAllContainer = el('div', 'stcm-select-all-container');
+    selectAllContainer.style.cssText = `
+        margin-top: 8px;
+        display: flex;
+        gap: 4px;
+    `;
+
+    const selectAllEditBtn = mkBtn('Select All Edit', 'ok');
+    selectAllEditBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; flex: 1;';
+    selectAllEditBtn.addEventListener('click', () => {
+        selectAllFields('edit');
+        updateSelectionStatus();
+    });
+
+    const selectAllContextBtn = mkBtn('Select All Context', 'accent');
+    selectAllContextBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; flex: 1;';
+    selectAllContextBtn.addEventListener('click', () => {
+        selectAllFields('context');
+        updateSelectionStatus();
+    });
+
+    const clearAllBtn = mkBtn('Clear All', 'warn');
+    clearAllBtn.style.cssText = 'padding: 4px 8px; font-size: 11px; flex: 1;';
+    clearAllBtn.addEventListener('click', () => {
+        clearAllFields();
+        updateSelectionStatus();
+    });
+
+    selectAllContainer.append(selectAllEditBtn, selectAllContextBtn, clearAllBtn);
+
+    // Helper functions for field selection
+    function selectAllFields(type) {
+        if (!currentCharacter) return;
+        
+        const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+        const editModal = document.getElementById(editModalId);
+        if (!editModal) return;
+
+        // Define fields to exclude
+        const excludeFields = [
+            // Prompt overrides
+            'data.system_prompt',
+            'data.post_history_instructions', 
+            'data.extensions.depth_prompt.prompt',
+            'data.extensions.depth_prompt.depth',
+            'data.extensions.depth_prompt.role',
+            // Creator's metadata
+            'data.creator',
+            'data.creator_notes'
+        ];
+
+        // Get all available fields from CHARACTER_FIELDS, excluding specified ones
+        const fieldsToSelect = CHARACTER_FIELDS
+            .filter(field => !excludeFields.includes(field.key))
+            .map(field => field.key);
+
+        // Also get alternate greetings if they exist
+        const altGreetings = currentCharacter?.alternate_greetings || [];
+        const altFields = altGreetings.map((_, idx) => `alternate_greetings[${idx}].mes`);
+
+        const allFields = [...fieldsToSelect, ...altFields];
+
+        // Select checkboxes based on type
+        const checkboxSelector = type === 'edit' ? '.stcm-edit-checkbox' : '.stcm-context-checkbox';
+        const targetSet = type === 'edit' ? selectedFields : contextFields;
+
+        // Clear existing selections of this type
+        targetSet.clear();
+
+        // Check all relevant checkboxes
+        allFields.forEach(fieldKey => {
+            const checkbox = editModal.querySelector(`${checkboxSelector}[data-field-key="${fieldKey}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                targetSet.add(fieldKey);
+            }
+        });
+
+        // Save selections
+        saveSession();
+        
+        toastr.success(`Selected ${allFields.length} fields for ${type} (excluding prompt overrides and metadata)`);
+    }
+
+    function clearAllFields() {
+        if (!currentCharacter) return;
+        
+        const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+        const editModal = document.getElementById(editModalId);
+        if (!editModal) return;
+
+        // Uncheck all checkboxes
+        const allCheckboxes = editModal.querySelectorAll('.stcm-edit-checkbox, .stcm-context-checkbox');
+        allCheckboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+
+        // Clear selections
+        selectedFields.clear();
+        contextFields.clear();
+
+        // Save selections
+        saveSession();
+        
+        toastr.success('Cleared all field selections');
+    }
+
     function updateSelectionStatus() {
         const editCount = selectedFields.size;
         const contextCount = contextFields.size;
@@ -571,7 +679,7 @@ function createFieldSelectionSection() {
         `;
     }
 
-    statusContainer.append(title, editStatus, contextStatus, instructions, syncBtn);
+    statusContainer.append(title, editStatus, contextStatus, instructions, syncBtn, selectAllContainer);
     section.appendChild(statusContainer);
 
     // Store update function for later use
