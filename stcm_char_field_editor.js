@@ -293,8 +293,7 @@ function openFieldEditor(character) {
     }
 
     currentCharacter = character;
-    loadSession();
-
+    
     // Find the character edit modal
     const editModalId = `stcmCharEditModal-${character.avatar}`;
     const editModal = document.getElementById(editModalId);
@@ -311,6 +310,9 @@ function openFieldEditor(character) {
         closeFieldEditor();
         return;
     }
+
+    // Sync selections from main panel checkboxes
+    syncFieldSelectionsFromMainPanel();
 
     // Create the field editor panel
     const fieldEditorPanel = createFieldEditorPanel();
@@ -336,8 +338,51 @@ function openFieldEditor(character) {
         expandModalForFieldEditor(editModal);
     }
 
+    // Add event listener for field selection sync
+    const syncHandler = () => {
+        syncFieldSelectionsFromMainPanel();
+        const fieldSection = fieldEditorPanel.querySelector('.stcm-field-selection-section');
+        if (fieldSection && fieldSection.updateSelectionStatus) {
+            fieldSection.updateSelectionStatus();
+        }
+    };
+    document.addEventListener('stcm-sync-field-selections', syncHandler);
+    
+    // Store the handler for cleanup
+    fieldEditorPanel.syncHandler = syncHandler;
+
     // Initialize UI
     restoreUIFromState();
+}
+
+function syncFieldSelectionsFromMainPanel() {
+    if (!currentCharacter) return;
+    
+    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
+    const editModal = document.getElementById(editModalId);
+    
+    if (!editModal) return;
+    
+    // Clear existing selections
+    selectedFields.clear();
+    contextFields.clear();
+    
+    // Find all checked edit checkboxes
+    const editCheckboxes = editModal.querySelectorAll('.stcm-edit-checkbox:checked');
+    editCheckboxes.forEach(checkbox => {
+        const fieldKey = checkbox.dataset.fieldKey;
+        if (fieldKey) selectedFields.add(fieldKey);
+    });
+    
+    // Find all checked context checkboxes
+    const contextCheckboxes = editModal.querySelectorAll('.stcm-context-checkbox:checked');
+    contextCheckboxes.forEach(checkbox => {
+        const fieldKey = checkbox.dataset.fieldKey;
+        if (fieldKey) contextFields.add(fieldKey);
+    });
+    
+    // Save the synced selections
+    saveSession();
 }
 
 function closeFieldEditor() {
@@ -349,6 +394,11 @@ function closeFieldEditor() {
     if (editModal) {
         const fieldEditorPanel = editModal.querySelector('.stcm-field-editor-panel');
         if (fieldEditorPanel) {
+            // Clean up event listener
+            if (fieldEditorPanel.syncHandler) {
+                document.removeEventListener('stcm-sync-field-selections', fieldEditorPanel.syncHandler);
+            }
+            
             fieldEditorPanel.remove();
             
             // Restore modal body layout
@@ -429,287 +479,95 @@ function createFieldSelectionSection() {
     section.style.paddingBottom = '12px';
     section.style.marginBottom = '12px';
 
-    // Fields to Edit section
-    const editTitle = el('h4', null, 'Fields to Edit');
-    editTitle.style.margin = '0 0 8px 0';
-    editTitle.style.fontSize = '14px';
-    editTitle.style.color = '#fff';
+    // Simple status display
+    const statusContainer = el('div', 'stcm-selection-status');
+    statusContainer.style.cssText = `
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 12px;
+    `;
 
-    const editControls = el('div', 'stcm-field-controls');
-    editControls.style.marginBottom = '8px';
-    editControls.style.display = 'flex';
-    editControls.style.gap = '6px';
+    const title = el('h4', null, 'Selected Fields');
+    title.style.margin = '0 0 8px 0';
+    title.style.fontSize = '14px';
+    title.style.color = '#fff';
 
-    const editAllBtn = mkBtn('All', 'info');
-    const editNoneBtn = mkBtn('None', 'ghost');
-    editAllBtn.style.padding = '3px 6px';
-    editAllBtn.style.fontSize = '11px';
-    editNoneBtn.style.padding = '3px 6px';
-    editNoneBtn.style.fontSize = '11px';
+    const editStatus = el('div', 'stcm-edit-status');
+    editStatus.style.cssText = `
+        margin-bottom: 8px;
+        padding: 6px;
+        background: #2a2a2a;
+        border-radius: 3px;
+        border-left: 3px solid #4a9eff;
+    `;
 
-    editAllBtn.addEventListener('click', () => {
-        CHARACTER_FIELDS.forEach(field => {
-            if (!field.readonly) selectedFields.add(field.key);
-        });
-        updateSidePanelCheckboxes();
-        saveSession();
+    const contextStatus = el('div', 'stcm-context-status');
+    contextStatus.style.cssText = `
+        padding: 6px;
+        background: #2a2a2a;
+        border-radius: 3px;
+        border-left: 3px solid #ffaa4a;
+    `;
+
+    const instructions = el('div', 'stcm-instructions');
+    instructions.style.cssText = `
+        margin-top: 12px;
+        padding: 8px;
+        background: #2a4a2a;
+        border-radius: 3px;
+        font-size: 11px;
+        color: #aaa;
+        line-height: 1.4;
+    `;
+    instructions.innerHTML = `
+        <strong>How to use:</strong><br>
+        1. Use the checkboxes in the main character edit panel<br>
+        2. Select fields for <span style="color: #4a9eff;">Edit</span> (modify) or <span style="color: #ffaa4a;">Context</span> (reference)<br>
+        3. Individual alternate greetings have both full and message-only options<br>
+        4. Click "Sync Selections" to update if you change checkboxes
+    `;
+
+    const syncBtn = mkBtn('Sync Selections', 'info');
+    syncBtn.style.cssText = 'margin-top: 8px; padding: 6px 12px; font-size: 12px; width: 100%;';
+    syncBtn.addEventListener('click', () => {
+        syncFieldSelectionsFromMainPanel();
+        updateSelectionStatus();
+        toastr.success('Field selections updated from main panel');
     });
 
-    editNoneBtn.addEventListener('click', () => {
-        selectedFields.clear();
-        updateSidePanelCheckboxes();
-        saveSession();
-    });
+    function updateSelectionStatus() {
+        const editCount = selectedFields.size;
+        const contextCount = contextFields.size;
 
-    editControls.append(editAllBtn, editNoneBtn);
-
-    const editFieldList = el('div', 'stcm-edit-field-list');
-    editFieldList.style.maxHeight = '120px';
-    editFieldList.style.overflowY = 'auto';
-    editFieldList.style.marginBottom = '16px';
-
-    // Context Fields section
-    const contextTitle = el('h4', null, 'Context Fields (reference only)');
-    contextTitle.style.margin = '0 0 8px 0';
-    contextTitle.style.fontSize = '14px';
-    contextTitle.style.color = '#aaa';
-
-    const contextControls = el('div', 'stcm-context-controls');
-    contextControls.style.marginBottom = '8px';
-    contextControls.style.display = 'flex';
-    contextControls.style.gap = '6px';
-
-    const contextAllBtn = mkBtn('All', 'info');
-    const contextNoneBtn = mkBtn('None', 'ghost');
-    contextAllBtn.style.padding = '3px 6px';
-    contextAllBtn.style.fontSize = '11px';
-    contextNoneBtn.style.padding = '3px 6px';
-    contextNoneBtn.style.fontSize = '11px';
-
-    contextAllBtn.addEventListener('click', () => {
-        CHARACTER_FIELDS.forEach(field => {
-            if (!field.readonly) contextFields.add(field.key);
-        });
-        updateSidePanelCheckboxes();
-        saveSession();
-    });
-
-    contextNoneBtn.addEventListener('click', () => {
-        contextFields.clear();
-        updateSidePanelCheckboxes();
-        saveSession();
-    });
-
-    contextControls.append(contextAllBtn, contextNoneBtn);
-
-    const contextFieldList = el('div', 'stcm-context-field-list');
-    contextFieldList.style.maxHeight = '120px';
-    contextFieldList.style.overflowY = 'auto';
-
-    // Create field checkboxes for both lists
-    CHARACTER_FIELDS.forEach(field => {
-        if (field.readonly) return;
-
-        // Edit field checkbox
-        const editRow = createFieldCheckbox(field, 'edit');
-        editFieldList.appendChild(editRow);
-
-        // Context field checkbox  
-        const contextRow = createFieldCheckbox(field, 'context');
-        contextFieldList.appendChild(contextRow);
-    });
-
-    // Add alternate greetings selector if they exist
-    if (currentCharacter?.alternate_greetings?.length > 0) {
-        const totalGreetings = currentCharacter.alternate_greetings.length;
-        
-        // Add header for alternate greetings selector
-        const altGreetingHeader = el('div', 'stcm-alt-greeting-header');
-        altGreetingHeader.style.cssText = `
-            margin: 10px 0 5px 0; 
-            padding: 5px; 
-            background: #2a2a2a; 
-            border-radius: 4px;
-            border-left: 3px solid #4a9eff;
+        editStatus.innerHTML = `
+            <strong>Fields to Edit (${editCount}):</strong><br>
+            <span style="font-size: 11px; color: #ddd;">
+                ${editCount === 0 ? 'None selected' : Array.from(selectedFields).join(', ')}
+            </span>
         `;
-        altGreetingHeader.innerHTML = `<strong>Alternate Greetings (${totalGreetings} total):</strong>`;
-        editFieldList.appendChild(altGreetingHeader);
-        
-        // Add range selector
-        const rangeSelector = el('div', 'stcm-range-selector');
-        rangeSelector.style.cssText = `
-            margin: 5px 0; 
-            padding: 8px; 
-            background: #1a1a1a; 
-            border-radius: 4px;
-            border: 1px solid #333;
+
+        contextStatus.innerHTML = `
+            <strong>Context Fields (${contextCount}):</strong><br>
+            <span style="font-size: 11px; color: #ddd;">
+                ${contextCount === 0 ? 'None selected' : Array.from(contextFields).join(', ')}
+            </span>
         `;
-        
-        const rangeLabel = el('div', null, 'Select range to show:');
-        rangeLabel.style.cssText = 'font-size: 0.9em; color: #aaa; margin-bottom: 5px;';
-        
-        const rangeInputs = el('div', 'stcm-range-inputs');
-        rangeInputs.style.cssText = 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;';
-        
-        const fromLabel = el('span', null, 'From:');
-        fromLabel.style.fontSize = '0.85em';
-        const fromInput = document.createElement('input');
-        fromInput.type = 'number';
-        fromInput.min = '1';
-        fromInput.max = totalGreetings;
-        fromInput.value = '1';
-        fromInput.style.cssText = 'width: 60px; padding: 2px 4px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;';
-        
-        const toLabel = el('span', null, 'To:');
-        toLabel.style.fontSize = '0.85em';
-        const toInput = document.createElement('input');
-        toInput.type = 'number';
-        toInput.min = '1';
-        toInput.max = totalGreetings;
-        toInput.value = Math.min(10, totalGreetings).toString();
-        toInput.style.cssText = fromInput.style.cssText;
-        
-        const showBtn = mkBtn('Show', 'info');
-        showBtn.style.cssText = 'padding: 2px 8px; font-size: 0.85em;';
-        
-        const showAllBtn = mkBtn('Show All', 'warn');
-        showAllBtn.style.cssText = 'padding: 2px 8px; font-size: 0.85em;';
-        
-        rangeInputs.append(fromLabel, fromInput, toLabel, toInput, showBtn, showAllBtn);
-        rangeSelector.append(rangeLabel, rangeInputs);
-        editFieldList.appendChild(rangeSelector);
-        
-        // Container for dynamically shown greetings
-        const dynamicGreetingsContainer = el('div', 'stcm-dynamic-greetings');
-        editFieldList.appendChild(dynamicGreetingsContainer);
-        
-        const contextDynamicGreetingsContainer = el('div', 'stcm-context-dynamic-greetings');
-        contextFieldList.appendChild(contextDynamicGreetingsContainer);
-        
-        // Function to show greetings in range
-        const showGreetingsInRange = (start, end) => {
-            // Clear existing dynamic greetings
-            dynamicGreetingsContainer.innerHTML = '';
-            contextDynamicGreetingsContainer.innerHTML = '';
-            
-            const actualStart = Math.max(1, Math.min(start, totalGreetings)) - 1; // Convert to 0-based
-            const actualEnd = Math.max(actualStart, Math.min(end, totalGreetings)) - 1; // Convert to 0-based
-            
-            // Add context header if showing any greetings
-            if (actualStart <= actualEnd) {
-                const contextHeader = el('div', 'stcm-context-alt-header');
-                contextHeader.style.cssText = altGreetingHeader.style.cssText;
-                contextHeader.innerHTML = `<strong>Alternate Greetings (${actualStart + 1}-${actualEnd + 1}):</strong>`;
-                contextDynamicGreetingsContainer.appendChild(contextHeader);
-            }
-            
-            for (let i = actualStart; i <= actualEnd; i++) {
-                const greeting = currentCharacter.alternate_greetings[i];
-                const fieldKey = `alternate_greetings[${i}]`;
-                const mesFieldKey = `alternate_greetings[${i}].mes`;
-                
-                // Get preview text
-                let previewText = '';
-                if (typeof greeting === 'object' && greeting.mes) {
-                    previewText = greeting.mes.slice(0, 60);
-                } else if (typeof greeting === 'string') {
-                    previewText = greeting.slice(0, 60);
-                }
-                if (previewText.length === 60) previewText += '...';
-                
-                const dynamicField = {
-                    key: fieldKey,
-                    label: `Alt Greeting ${i + 1}${previewText ? `: "${previewText}"` : ''}`,
-                    multiline: true,
-                    category: 'basics',
-                    readonly: false,
-                    isDynamic: true
-                };
-                
-                const mesField = {
-                    key: mesFieldKey,
-                    label: `Alt Greeting ${i + 1} Message${previewText ? `: "${previewText}"` : ''}`,
-                    multiline: true,
-                    category: 'basics',
-                    readonly: false,
-                    isDynamic: true
-                };
-
-                // Edit field checkboxes
-                const editRow = createFieldCheckbox(dynamicField, 'edit');
-                const mesEditRow = createFieldCheckbox(mesField, 'edit');
-                dynamicGreetingsContainer.append(editRow, mesEditRow);
-
-                // Context field checkboxes
-                const contextRow = createFieldCheckbox(dynamicField, 'context');
-                const mesContextRow = createFieldCheckbox(mesField, 'context');
-                contextDynamicGreetingsContainer.append(contextRow, mesContextRow);
-            }
-            
-            // Update checkboxes to reflect current state
-            updateSidePanelCheckboxes();
-        };
-        
-        // Event listeners
-        showBtn.addEventListener('click', () => {
-            const start = parseInt(fromInput.value) || 1;
-            const end = parseInt(toInput.value) || totalGreetings;
-            showGreetingsInRange(start, end);
-        });
-        
-        showAllBtn.addEventListener('click', () => {
-            fromInput.value = '1';
-            toInput.value = totalGreetings.toString();
-            showGreetingsInRange(1, totalGreetings);
-        });
-        
-        // Show first 10 by default
-        showGreetingsInRange(1, Math.min(10, totalGreetings));
     }
 
-    section.append(
-        editTitle, 
-        editControls, 
-        editFieldList,
-        contextTitle, 
-        contextControls, 
-        contextFieldList
-    );
+    statusContainer.append(title, editStatus, contextStatus, instructions, syncBtn);
+    section.appendChild(statusContainer);
+
+    // Store update function for later use
+    section.updateSelectionStatus = updateSelectionStatus;
+    
+    // Initialize status display
+    updateSelectionStatus();
+
     return section;
 }
 
-function createFieldCheckbox(field, type) {
-    const row = el('div', 'stcm-field-row');
-    row.style.display = 'flex';
-    row.style.alignItems = 'center';
-    row.style.marginBottom = '4px';
-    row.style.gap = '6px';
-    row.style.fontSize = '12px';
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = `field-${type}-${field.key}`;
-    checkbox.checked = type === 'edit' ? selectedFields.has(field.key) : contextFields.has(field.key);
-    
-    checkbox.addEventListener('change', () => {
-        const targetSet = type === 'edit' ? selectedFields : contextFields;
-        if (checkbox.checked) {
-            targetSet.add(field.key);
-        } else {
-            targetSet.delete(field.key);
-        }
-        saveSession();
-    });
-
-    const label = document.createElement('label');
-    label.htmlFor = `field-${type}-${field.key}`;
-    label.style.cursor = 'pointer';
-    label.style.flex = '1';
-    label.textContent = field.label;
-
-    row.append(checkbox, label);
-    return row;
-}
 
 function createChatSection() {
     const section = el('div', 'stcm-chat-section');
@@ -787,43 +645,7 @@ function restoreModalFromFieldEditor(editModal) {
     }
 }
 
-function updateSidePanelCheckboxes() {
-    if (!currentCharacter) return;
-    
-    const editModalId = `stcmCharEditModal-${currentCharacter.avatar}`;
-    const editModal = document.getElementById(editModalId);
-    const panel = editModal?.querySelector('.stcm-field-editor-panel');
-    
-    if (!panel) return;
 
-    // Update static CHARACTER_FIELDS checkboxes
-    CHARACTER_FIELDS.forEach(field => {
-        // Update edit checkboxes
-        const editCheckbox = panel.querySelector(`#field-edit-${field.key}`);
-        if (editCheckbox) {
-            editCheckbox.checked = selectedFields.has(field.key);
-        }
-        
-        // Update context checkboxes
-        const contextCheckbox = panel.querySelector(`#field-context-${field.key}`);
-        if (contextCheckbox) {
-            contextCheckbox.checked = contextFields.has(field.key);
-        }
-    });
-    
-    // Update dynamic alternate greeting checkboxes
-    const allEditCheckboxes = panel.querySelectorAll('[id^="field-edit-alternate_greetings["]');
-    allEditCheckboxes.forEach(checkbox => {
-        const fieldKey = checkbox.id.replace('field-edit-', '');
-        checkbox.checked = selectedFields.has(fieldKey);
-    });
-    
-    const allContextCheckboxes = panel.querySelectorAll('[id^="field-context-alternate_greetings["]');
-    allContextCheckboxes.forEach(checkbox => {
-        const fieldKey = checkbox.id.replace('field-context-', '');
-        checkbox.checked = contextFields.has(fieldKey);
-    });
-}
 
 
 
