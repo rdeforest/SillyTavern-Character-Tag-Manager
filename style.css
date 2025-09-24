@@ -637,9 +637,9 @@ font-size: .9em;
 
 .stcm-edit-checkbox, .stcm-context-checkbox {
     resize: none!important;
-    -webkit-appearance: none!important;
-    -moz-appearance: none!important;
-    appearance: none!important;
+    -webkit-appearance: checkbox!important;
+    -moz-appearance: checkbox!important;
+    appearance: checkbox!important;
     width: 16px!important;
     height: 16px!important;
     border: 1px solid var(--SmartThemeBorderColor)!important;
