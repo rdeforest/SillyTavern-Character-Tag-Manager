@@ -67,6 +67,11 @@ export function createEditSectionForCharacter(char) {
         input.readOnly = readonly;
         input.style.flex = '1';
 
+        // Create sub-container for input and checkboxes
+        const subContainer = document.createElement('div');
+        subContainer.className = 'edit-row-sub';
+        subContainer.style.cssText = 'width: 100%; display: flex;';
+
         // Add AI Field Editor checkboxes (only if not readonly)
         const checkboxContainer = document.createElement('div');
         checkboxContainer.className = 'stcm-field-checkboxes';
@@ -75,7 +80,6 @@ export function createEditSectionForCharacter(char) {
             flex-direction: row;
             align-items: center;
             margin-left: 12px;
-            margin-top: 8px;
             gap: 8px;
         `;
 
@@ -160,11 +164,14 @@ export function createEditSectionForCharacter(char) {
             checkboxContainer.append(editWrapper, contextWrapper);
         }
 
-        row.appendChild(lbl);
-        row.appendChild(input);
+        // Add input and checkboxes to sub-container
+        subContainer.appendChild(input);
         if (!readonly) {
-            row.appendChild(checkboxContainer);
+            subContainer.appendChild(checkboxContainer);
         }
+
+        row.appendChild(lbl);
+        row.appendChild(subContainer);
         return row;
     }
 
@@ -285,6 +292,11 @@ export function createEditSectionForCharacter(char) {
             ta.style.flex = '1';
             ta.addEventListener('input', () => { altState.list[idx] = ta.value; });
 
+            // Create sub-container for textarea and checkboxes
+            const subContainer = document.createElement('div');
+            subContainer.className = 'edit-row-sub';
+            subContainer.style.cssText = 'width: 100%; display: flex;';
+
             // AI Field Editor checkboxes for individual alternate greetings
             const checkboxContainer = document.createElement('div');
             checkboxContainer.className = 'stcm-alt-field-checkboxes';
@@ -293,7 +305,6 @@ export function createEditSectionForCharacter(char) {
                 flex-direction: row;
                 align-items: center;
                 margin-left: 12px;
-                margin-top: 8px;
                 gap: 8px;
             `;
 
@@ -376,6 +387,10 @@ export function createEditSectionForCharacter(char) {
             contextWrapper.append(contextIcon, contextCheck);
             checkboxContainer.append(editWrapper, contextWrapper);
 
+            // Add textarea and checkboxes to sub-container
+            subContainer.appendChild(ta);
+            subContainer.appendChild(checkboxContainer);
+
             const del = document.createElement('button');
             del.className = 'stcm_menu_button small';
             del.textContent = 'Delete';
@@ -386,8 +401,7 @@ export function createEditSectionForCharacter(char) {
             });
 
             item.appendChild(indexLabel);
-            item.appendChild(ta);
-            item.appendChild(checkboxContainer);
+            item.appendChild(subContainer);
             item.appendChild(del);
             listWrap.appendChild(item);
         });
