@@ -75,6 +75,7 @@ export function createEditSectionForCharacter(char) {
             flex-direction: row;
             align-items: center;
             margin-left: 12px;
+            margin-top: 8px;
             gap: 8px;
         `;
 
@@ -292,6 +293,7 @@ export function createEditSectionForCharacter(char) {
                 flex-direction: row;
                 align-items: center;
                 margin-left: 12px;
+                margin-top: 8px;
                 gap: 8px;
             `;
 
