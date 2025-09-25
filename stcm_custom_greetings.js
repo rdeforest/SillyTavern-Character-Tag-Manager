@@ -2061,17 +2061,20 @@ async function addCustomGreeting(newGreeting) {
             }
         }
 
-        // Current list from card (prefer data.alternate_greetings, handle both formats)
+        // Current list from card - normalize to strings
         const currentData = Array.isArray(ch?.data?.alternate_greetings)
             ? [...ch.data.alternate_greetings]
             : Array.isArray(ctx?.characterData?.alternate_greetings)
                 ? [...ctx.characterData.alternate_greetings]
                 : [];
 
-        // Handle both string and object formats for alternate greetings
+        // Extract text content from alternate greetings (handle both string and object formats)
         const currentStrings = currentData.map(g => {
-            if (typeof g === 'object' && g.mes !== undefined) {
-                return g.mes;
+            if (typeof g === 'string') {
+                return g.trim();
+            } else if (typeof g === 'object' && g !== null) {
+                // Handle object format - extract the message text
+                return String(g.mes || g.message || g.text || '').trim();
             }
             return String(g || '').trim();
         }).filter(s => s.length > 0);
@@ -2081,18 +2084,16 @@ async function addCustomGreeting(newGreeting) {
             return { saved: false, message: 'This greeting is already saved.', total: currentStrings.length };
         }
 
-        // Create new greeting in object format (consistent with SillyTavern v3 spec)
-        const newGreetingObj = { mes: text };
-        const nextData = [...currentData, newGreetingObj];
+        // Add the new greeting as a simple string to the existing strings
         const nextStrings = [...currentStrings, text];
 
-        // Build payload using the same structure as character panel
+        // Build payload - save as simple strings, not objects
         const payload = { 
             avatar: avatar,
             data: { 
-                alternate_greetings: nextData 
+                alternate_greetings: nextStrings  // Save as strings, not objects
             },
-            alternate_greetings: nextData  // Set both locations for compatibility
+            alternate_greetings: nextStrings  // Set both locations for compatibility
         };
 
         if (!payload.avatar) {
@@ -2131,22 +2132,22 @@ async function addCustomGreeting(newGreeting) {
             throw new Error(errorMessage);
         }
 
-        // Update in-memory caches for immediate availability
+        // Update in-memory caches for immediate availability - use strings
         if (!ctx.characterData) ctx.characterData = {};
-        ctx.characterData.alternate_greetings = nextData;
+        ctx.characterData.alternate_greetings = nextStrings;
         if (ch) {
             if (!ch.data) ch.data = {};
-            ch.data.alternate_greetings = nextData;
-            ch.alternate_greetings = nextData; // Also set root level for compatibility
+            ch.data.alternate_greetings = nextStrings;
+            ch.alternate_greetings = nextStrings; // Also set root level for compatibility
         }
 
-        // Update json_data field if it exists (for persistence)
+        // Update json_data field if it exists (for persistence) - use strings
         if (ch && ch.json_data) {
             try {
                 const jsonData = JSON.parse(ch.json_data);
                 if (!jsonData.data) jsonData.data = {};
-                jsonData.data.alternate_greetings = nextData;
-                jsonData.alternate_greetings = nextData;
+                jsonData.data.alternate_greetings = nextStrings;
+                jsonData.alternate_greetings = nextStrings;
                 ch.json_data = JSON.stringify(jsonData);
             } catch (e) {
                 console.warn('[GW] Failed to update json_data field:', e);
