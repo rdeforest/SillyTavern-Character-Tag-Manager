@@ -572,6 +572,19 @@ export function createEditSectionForCharacter(char) {
                             console.warn('[STCM] Failed to update json_data field:', e);
                         }
                     }
+
+                    // --- PATCH: Update the global characters array ---
+                    try {
+                        // Find the character in the global array and update it
+                        if (window.characters && Array.isArray(window.characters)) {
+                            const idx = window.characters.findIndex(c => c.avatar === char.avatar);
+                            if (idx !== -1) {
+                                Object.assign(window.characters[idx], char);
+                            }
+                        }
+                    } catch (e) {
+                        // Ignore if not present
+                    }
                     
                     toastr.success(`Saved updates to ${char.name}`);
                     
