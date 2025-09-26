@@ -1445,50 +1445,92 @@ function buildStopFields(apiInfo, profile, instructEnabled, instructCfgEff) {
 function getModelFromContextByApi(profile) {
     ensureCtx();
     if (!profile || !profile.api) return null;
-    
+
     try {
-        const canonProvider = String(profile.api || '').toLowerCase().trim();
-        const TAG = '[STCM Field Editor]';
-        
+        // Canonicalize provider name
+        const apiRaw = String(profile.api || '').toLowerCase();
+        const canonMap = {
+            oai: 'openai', openai: 'openai',
+            claude: 'claude', anthropic: 'claude',
+            google: 'google', vertexai: 'vertexai',
+            ai21: 'ai21',
+            mistralai: 'mistralai', mistral: 'mistralai',
+            cohere: 'cohere',
+            perplexity: 'perplexity',
+            groq: 'groq',
+            nanogpt: 'nanogpt',
+            zerooneai: 'zerooneai',
+            deepseek: 'deepseek',
+            xai: 'xai',
+            pollinations: 'pollinations',
+            'openrouter-text': 'openai',
+            koboldcpp: 'koboldcpp', kcpp: 'koboldcpp',
+        };
+        const canonProvider = canonMap[apiRaw] || apiRaw;
+        const flatKeys = [`${canonProvider}_model`, `${apiRaw}_model`];
+
         const containers = [
-            { name: 'ctx.online_status', obj: ctx?.online_status || {} },
-            { name: 'ctx.api_server_textgenerationwebui', obj: ctx?.api_server_textgenerationwebui || {} },
-            { name: 'ctx.koboldai_settings', obj: ctx?.koboldai_settings || {} },
-            { name: 'ctx.horde_settings', obj: ctx?.horde_settings || {} },
-            { name: 'ctx.mancer_settings', obj: ctx?.mancer_settings || {} },
-            { name: 'ctx.aphrodite_settings', obj: ctx?.aphrodite_settings || {} },
-            { name: 'ctx.tabby_settings', obj: ctx?.tabby_settings || {} },
-            { name: 'ctx.togetherai_settings', obj: ctx?.togetherai_settings || {} },
-            { name: 'ctx.infermaticai_settings', obj: ctx?.infermaticai_settings || {} },
-            { name: 'ctx.dreamgen_settings', obj: ctx?.dreamgen_settings || {} },
-            { name: 'ctx.openrouter_settings', obj: ctx?.openrouter_settings || {} },
-            { name: 'ctx.ai21_settings', obj: ctx?.ai21_settings || {} },
-            { name: 'ctx.makersuite_settings', obj: ctx?.makersuite_settings || {} },
-            { name: 'ctx.mistralai_settings', obj: ctx?.mistralai_settings || {} },
-            { name: 'ctx.custom_settings', obj: ctx?.custom_settings || {} },
-            { name: 'ctx.cohere_settings', obj: ctx?.cohere_settings || {} },
-            { name: 'ctx.perplexity_settings', obj: ctx?.perplexity_settings || {} },
-            { name: 'ctx.groq_settings', obj: ctx?.groq_settings || {} },
+            { name: 'ctx.chatCompletionSettings', obj: ctx?.chatCompletionSettings },
+            { name: 'ctx.textCompletionSettings', obj: ctx?.textCompletionSettings },
+            { name: 'ctx.extensionSettings.chatCompletionSettings', obj: ctx?.extensionSettings?.chatCompletionSettings },
+            { name: 'ctx.extensionSettings.textCompletionSettings', obj: ctx?.extensionSettings?.textCompletionSettings },
+            { name: 'ctx.settings.chatCompletionSettings', obj: ctx?.settings?.chatCompletionSettings },
+            { name: 'ctx.settings.textCompletionSettings', obj: ctx?.settings?.textCompletionSettings },
+            { name: 'ctx', obj: ctx },
+            { name: 'window', obj: window },
         ];
 
+        // 1) flat <provider>_model
+        for (const key of flatKeys) {
+            for (const c of containers) {
+                const v = c.obj?.[key];
+                if (typeof v === 'string' && v.trim()) {
+                    return v.trim();
+                }
+            }
+        }
+
+        // 2) nested {provider: { model }}
+        const providerSectionKeys = [canonProvider, apiRaw];
+        for (const c of containers) {
+            const root = c.obj;
+            if (!root || typeof root !== 'object') continue;
+            for (const pkey of providerSectionKeys) {
+                const section = root[pkey];
+                if (section && typeof section === 'object') {
+                    const mv = section.model ?? section.currentModel ?? section.selectedModel ?? section.defaultModel;
+                    if (typeof mv === 'string' && mv.trim()) {
+                        return mv.trim();
+                    }
+                }
+            }
+        }
+
+        // 3) limited deep scan
+        const seen = new WeakSet();
+        const maxDepth = 5;
         function deepFind(obj, depth, path) {
-            if (depth > 10) return null;
-            if (!obj || typeof obj !== 'object') return null;
-            for (const pkey of ['model', 'model_textgenerationwebui', 'model_koboldai', 'selected_model']) {
-                if (obj.hasOwnProperty(pkey)) {
-                    const mv = obj[pkey];
-                    if (typeof mv === 'string' && mv.trim().length > 0) {
-                        const cleaned = mv.trim();
-                        console.debug(`${TAG} FOUND ${path}.${pkey}.model =>`, cleaned);
-                        return cleaned;
+            if (!obj || typeof obj !== 'object' || seen.has(obj) || depth > maxDepth) return null;
+            seen.add(obj);
+
+            for (const key of flatKeys) {
+                if (typeof obj[key] === 'string' && obj[key].trim()) {
+                    return obj[key].trim();
+                }
+            }
+            for (const pkey of providerSectionKeys) {
+                const sec = obj[pkey];
+                if (sec && typeof sec === 'object') {
+                    const mv = sec.model ?? sec.currentModel ?? sec.selectedModel ?? sec.defaultModel;
+                    if (typeof mv === 'string' && mv.trim()) {
+                        return mv.trim();
                     }
                 }
             }
             for (const k of Object.keys(obj)) {
                 const child = obj[k];
-                const childPath = `${path}.${k}`;
                 if (child && typeof child === 'object') {
-                    const found = deepFind(child, depth + 1, childPath);
+                    const found = deepFind(child, depth + 1, path + '.' + k);
                     if (found) return found;
                 }
             }
@@ -1499,7 +1541,6 @@ function getModelFromContextByApi(profile) {
             if (found) return found;
         }
 
-        console.debug(`${TAG} no model found for provider:`, canonProvider);
         return null;
     } catch (e) {
         console.warn('[STCM Field Editor] getModelFromContextByApi error:', e);
