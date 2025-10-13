@@ -33,9 +33,9 @@ function ensureContext() {
  */
 function isDevMode() {
     try {
-        const { extension_settings } = require('../../../extensions.js');
+        ensureContext();
         const MODULE_NAME = 'characterTagManager';
-        return extension_settings?.[MODULE_NAME]?.devMode ?? false;
+        return context?.extensionSettings?.[MODULE_NAME]?.devMode ?? false;
     } catch {
         return false;
     }
