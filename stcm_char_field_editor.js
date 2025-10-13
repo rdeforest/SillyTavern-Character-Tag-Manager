@@ -1636,8 +1636,8 @@ async function saveCharacterChanges(character, changes) {
                 actualChanges[fieldKey] = newValue;
                 hasChanges = true;
                 console.log(`[STCM Field Editor] Field "${fieldKey}" changed:`, {
-                    from: normalizedCurrent,
-                    to: normalizedNew
+                    from: normalizedCurrent?.substring(0, 100),
+                    to: normalizedNew?.substring(0, 100)
                 });
             } else {
                 console.log(`[STCM Field Editor] Field "${fieldKey}" unchanged, skipping`);
@@ -1652,144 +1652,83 @@ async function saveCharacterChanges(character, changes) {
         
         console.log(`[STCM Field Editor] Saving ${Object.keys(actualChanges).length} changed fields:`, Object.keys(actualChanges));
         
-        // Use FormData instead of JSON - this is the key fix!
+        // Create a COMPLETE character object with the changes applied
+        const updatedCharacter = JSON.parse(JSON.stringify(character)); // Deep clone
+        
+        // Apply the actual changes to the cloned character
+        for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
+            setFieldValue(updatedCharacter, fieldKey, newValue);
+        }
+        
+        // Now build FormData from the COMPLETE updated character (like the working example)
         const formData = new FormData();
         
-        // Required fields for the edit endpoint
-        formData.append('ch_name', character.name || character.data?.name || '');
-        formData.append('avatar_url', character.avatar || '');
-        
-        // Basic character fields - start with current values
-        formData.append('description', character.description || character.data?.description || '');
-        formData.append('personality', character.personality || character.data?.personality || '');
-        formData.append('scenario', character.scenario || character.data?.scenario || '');
-        formData.append('first_mes', character.first_mes || character.data?.first_mes || '');
-        formData.append('mes_example', character.mes_example || character.data?.mes_example || '');
-        formData.append('creatorcomment', character.creatorcomment || character.data?.creator_notes || '');
-        formData.append('tags', Array.isArray(character.tags) ? character.tags.join(',') : '');
+        // Basic fields from root level
+        formData.append('ch_name', updatedCharacter.name || updatedCharacter.data?.name || '');
+        formData.append('avatar_url', updatedCharacter.avatar || '');
+        formData.append('description', updatedCharacter.description || updatedCharacter.data?.description || '');
+        formData.append('first_mes', updatedCharacter.first_mes || updatedCharacter.data?.first_mes || '');
+        formData.append('scenario', updatedCharacter.scenario || updatedCharacter.data?.scenario || '');
+        formData.append('personality', updatedCharacter.personality || updatedCharacter.data?.personality || '');
+        formData.append('mes_example', updatedCharacter.mes_example || updatedCharacter.data?.mes_example || '');
+        formData.append('creatorcomment', updatedCharacter.creatorcomment || updatedCharacter.data?.creator_notes || '');
+        formData.append('tags', (updatedCharacter.tags || []).join(','));
 
-        // Extended character data fields
-        const charInnerData = character.data || {};
-        formData.append('creator', charInnerData.creator || '');
-        formData.append('character_version', charInnerData.character_version || '');
-        formData.append('creator_notes', charInnerData.creator_notes || character.creatorcomment || '');
-        formData.append('system_prompt', charInnerData.system_prompt || '');
-        formData.append('post_history_instructions', charInnerData.post_history_instructions || '');
-
-        // Extensions data
-        const extensions = charInnerData.extensions || {};
-        formData.append('chat', character.chat || '');
-        formData.append('create_date', character.create_date || '');
-        formData.append('last_mes', character.last_mes || '');
-        formData.append('talkativeness', String(extensions.talkativeness || character.talkativeness || 0.5));
-        formData.append('fav', String(extensions.fav || character.fav || false));
-        formData.append('world', extensions.world || '');
-
-        // Depth prompt data
-        const depthPrompt = extensions.depth_prompt || {};
-        formData.append('depth_prompt_prompt', depthPrompt.prompt || '');
-        formData.append('depth_prompt_depth', String(depthPrompt.depth || 4));
-        formData.append('depth_prompt_role', depthPrompt.role || 'system');
-
-        // Handle alternate greetings - start with current data
-        const currentGreetings = charInnerData.alternate_greetings || character.alternate_greetings || [];
-        let greetingsToSave = currentGreetings;
-
-        // Apply ONLY the actual changes to the form data
-        for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
-            
-            if (fieldKey === 'name') {
-                formData.set('ch_name', newValue);
-            } else if (fieldKey === 'description') {
-                formData.set('description', newValue);
-            } else if (fieldKey === 'personality') {
-                formData.set('personality', newValue);
-            } else if (fieldKey === 'scenario') {
-                formData.set('scenario', newValue);
-            } else if (fieldKey === 'first_mes') {
-                formData.set('first_mes', newValue);
-            } else if (fieldKey === 'mes_example') {
-                formData.set('mes_example', newValue);
-            } else if (fieldKey === 'data.creator_notes') {
-                formData.set('creator_notes', newValue);
-                formData.set('creatorcomment', newValue); // Also update the legacy field
-            } else if (fieldKey === 'data.system_prompt') {
-                formData.set('system_prompt', newValue);
-            } else if (fieldKey === 'data.post_history_instructions') {
-                formData.set('post_history_instructions', newValue);
-            } else if (fieldKey === 'data.creator') {
-                formData.set('creator', newValue);
-            } else if (fieldKey === 'data.extensions.depth_prompt.prompt') {
-                formData.set('depth_prompt_prompt', newValue);
-            } else if (fieldKey === 'alternate_greetings') {
-                // Convert the text format to array format
-                if (typeof newValue === 'string') {
-                    const messages = newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g);
-                    greetingsToSave = messages;
-                } else if (Array.isArray(newValue)) {
-                    greetingsToSave = newValue.map(item => 
-                        typeof item === 'object' && item.mes ? item.mes : item
-                    );
-                } else {
-                    greetingsToSave = [];
-                }
-            } else if (fieldKey.startsWith('alternate_greetings[') && fieldKey.includes('.mes')) {
-                // Handle individual alternate greeting updates
-                const match = fieldKey.match(/alternate_greetings\[(\d+)\]\.mes/);
-                if (match) {
-                    const index = parseInt(match[1]);
-                    
-                    // Convert current greetings to string array if needed
-                    greetingsToSave = [...greetingsToSave].map(item => 
-                        typeof item === 'object' && item.mes ? item.mes : item
-                    );
-                    
-                    // Ensure array is long enough
-                    while (greetingsToSave.length <= index) {
-                        greetingsToSave.push('');
-                    }
-                    
-                    // Update the specific greeting
-                    greetingsToSave[index] = newValue;
-                }
-            } else if (fieldKey === 'tags') {
-                const tagsStr = Array.isArray(newValue) ? newValue.join(',') : String(newValue);
-                formData.set('tags', tagsStr);
-            }
-        }
-
-        // Add alternate greetings to FormData (FormData handles arrays properly)
-        if (Array.isArray(greetingsToSave)) {
-            for (const greeting of greetingsToSave) {
-                if (greeting && typeof greeting === 'string') {
-                    formData.append('alternate_greetings', greeting);
-                }
-            }
-        }
-
-        // Get and add the avatar file - CRITICAL for the edit endpoint
+        // Get and add the avatar file
         try {
-            const avatarUrl = ctx.getThumbnailUrl('avatar', character.avatar);
+            const avatarUrl = ctx.getThumbnailUrl('avatar', updatedCharacter.avatar);
             const avatarBlob = await fetch(avatarUrl).then(res => res.blob());
             const avatarFile = new File([avatarBlob], 'avatar.png', { type: 'image/png' });
             formData.append('avatar', avatarFile);
         } catch (avatarError) {
             console.warn('[STCM Field Editor] Could not fetch avatar file:', avatarError);
-            // Continue without avatar - the endpoint might still work
         }
 
-        // Add the complete character JSON data
-        const updatedCharacter = { ...character };
-        for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
-            setFieldValue(updatedCharacter, fieldKey, newValue);
+        // Extended character data fields from data object
+        const charInnerData = updatedCharacter.data || {};
+        
+        formData.append('creator', charInnerData.creator || '');
+        formData.append('character_version', charInnerData.character_version || '');
+        formData.append('creator_notes', charInnerData.creator_notes || '');
+        formData.append('system_prompt', charInnerData.system_prompt || '');
+        formData.append('post_history_instructions', charInnerData.post_history_instructions || '');
+
+        // Extensions data
+        const extensions = charInnerData.extensions || {};
+        formData.append('chat', updatedCharacter.chat || '');
+        formData.append('create_date', updatedCharacter.create_date || '');
+        formData.append('last_mes', updatedCharacter.last_mes || '');
+        formData.append('talkativeness', extensions.talkativeness ?? '');
+        formData.append('fav', String(extensions.fav ?? false));
+        formData.append('world', extensions.world || '');
+
+        // Depth prompt data
+        const depthPrompt = extensions.depth_prompt || {};
+        formData.append('depth_prompt_prompt', depthPrompt.prompt || '');
+        formData.append('depth_prompt_depth', String(depthPrompt.depth ?? 4));
+        formData.append('depth_prompt_role', depthPrompt.role || '');
+
+        // Alternate greetings - extract strings from objects if needed
+        if (Array.isArray(charInnerData.alternate_greetings)) {
+            for (const greeting of charInnerData.alternate_greetings) {
+                // Extract the 'mes' property if it's an object, otherwise use as-is
+                const greetingText = typeof greeting === 'object' && greeting.mes 
+                    ? greeting.mes 
+                    : greeting;
+                if (greetingText) {
+                    formData.append('alternate_greetings', greetingText);
+                }
+            }
         }
+
+        // CRITICAL: Pass the complete json_data object
         formData.append('json_data', JSON.stringify(updatedCharacter));
 
         // Get headers and remove Content-Type (let browser set it for FormData)
         const headers = ctx.getRequestHeaders();
         delete headers['Content-Type'];
 
-        console.log('[STCM Field Editor] Sending FormData to /edit endpoint');
+        console.log('[STCM Field Editor] Sending complete character data to /edit endpoint');
 
         const result = await fetch('/api/characters/edit', {
             method: 'POST',
