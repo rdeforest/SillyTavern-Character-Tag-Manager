@@ -1,4 +1,4 @@
-import { stcm_saveCharacter } from "./utils.js"; 
+import { stcm_saveCharacter, isDevMode } from "./utils.js"; 
 // stcm_char_field_editor.js
 // SillyTavern Character Manager – Character Field Editor Workshop
 // Opens a modal with LLM integration to edit individual character fields
