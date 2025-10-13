@@ -6,12 +6,13 @@ import {
     saveNotes,
     parseSearchGroups,
     parseSearchTerm,
+    resetModalScrollPositions,
     makeModalDraggable,
-    stcm_saveCharacter, 
-    isDevMode
+    saveModalPosSize,
+    clampModalSize,
+    createMinimizableModalControls,
+    getNextZIndex
 } from './utils.js';
-
-import {  } from "./utils.js";
 
 import { tags, tag_map, removeTagFromEntity } from "../../../tags.js";
 import { characters, selectCharacterById, deleteCharacter } from "../../../../script.js";

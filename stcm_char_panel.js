@@ -486,5 +486,49 @@ export function createEditSectionForCharacter(char) {
     const tagsArray = Array.isArray(char.data?.tags) ? char.data.tags : [];
     metaFields.appendChild(renderField('Tags to Embed (comma-separated)', tagsArray.join(', '), 'data.tags'));
 
+    // === Save Button
+    const btnRow = document.createElement('div');
+    btnRow.className = 'stcm_char_edit_save_row'
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save Changes';
+    saveBtn.className = 'stcm_menu_button stcm_char_edit_save small';
+    saveBtn.addEventListener('click', async () => {
+        const inputs = section.querySelectorAll('.charEditInput');
+        const changes = {};
+        
+        inputs.forEach(i => {
+            if (!i.readOnly) {
+                changes[i.name] = i.value;
+            }
+        });
+
+        try {
+            await stcm_saveCharacter(char, changes, true);
+            toastr.success(`Saved updates to ${char.name}`);
+            
+            // Refresh our extension's character list
+            renderCharacterList();
+            
+            // Call our module's save and reload function
+            try {
+                const { callSaveandReload } = await import("./index.js");
+                if (typeof callSaveandReload === 'function') {
+                    await callSaveandReload();
+                }
+            } catch (error) {
+                if (isDevMode()) {
+                console.warn('[STCM] Could not call module reload:', error);
+                }
+            }
+        } catch (e) {
+            if (isDevMode()) {
+            console.warn('[STCM] Save character failed:', e);
+            toastr.error(`Failed to save updates: ${e.message}`);
+            }
+        }
+    });
+
+    btnRow.appendChild(saveBtn);
+    section.appendChild(btnRow);
     return section;
 }
