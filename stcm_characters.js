@@ -708,14 +708,17 @@ function injectStcmEditButton() {
 
 // Add this to watch for when the character panel opens/changes
 function watchCharacterPanel() {
-    // Watch for character changes
-    const context = SillyTavern.getContext();
-    if (context?.eventSource && context?.event_types?.CHARACTER_EDITED) {
-        context.eventSource.on(context.event_types.CHARACTER_EDITED, () => {
-            // Re-inject button in case the panel was rebuilt
-            setTimeout(() => injectStcmEditButton(), 100);
-        });
-    }
+    // Defer initialization to avoid blocking module load
+    setTimeout(() => {
+        try {
+            // Watch for character changes
+            const context = SillyTavern.getContext();
+            if (context?.eventSource && context?.event_types?.CHARACTER_EDITED) {
+                context.eventSource.on(context.event_types.CHARACTER_EDITED, () => {
+                    setTimeout(() => injectStcmEditButton(), 100);
+                });
+            }
+
 
     // Use MutationObserver to detect when avatar_controls becomes visible
     const observer = new MutationObserver((mutations) => {
@@ -749,6 +752,10 @@ function watchCharacterPanel() {
 
     // Also try to inject immediately in case panel is already open
     injectStcmEditButton();
+        } catch (error) {
+            console.warn('[STCM] watchCharacterPanel initialization failed:', error);
+        }
+    }, 100);
 }
 
 function toggleCharacterList(container, group) {
