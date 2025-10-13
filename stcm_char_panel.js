@@ -487,11 +487,35 @@ export function createEditSectionForCharacter(char) {
     metaFields.appendChild(renderField('Tags to Embed (comma-separated)', tagsArray.join(', '), 'data.tags'));
 
     // === Save Button
-    const btnRow = document.createElement('div');
-    btnRow.className = 'stcm_char_edit_save_row'
+        const btnRow = document.createElement('div');
+    btnRow.className = 'stcm_char_edit_save_row';
+    btnRow.style.cssText = `
+        position: sticky;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--SmartThemeBodyColor, #222);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 12px 16px;
+        margin: 0 -16px -16px -16px;
+        z-index: 100;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+    `;
+    
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'Save Changes';
-    saveBtn.className = 'stcm_menu_button stcm_char_edit_save small';
+    saveBtn.className = 'stcm_menu_button stcm_char_edit_save';
+    saveBtn.style.cssText = `
+        flex: 1;
+        max-width: 300px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: bold;
+    `;
+    
     saveBtn.addEventListener('click', async () => {
         const inputs = section.querySelectorAll('.charEditInput');
         const changes = {};
@@ -517,14 +541,14 @@ export function createEditSectionForCharacter(char) {
                 }
             } catch (error) {
                 if (isDevMode()) {
-                console.warn('[STCM] Could not call module reload:', error);
+                    console.warn('[STCM] Could not call module reload:', error);
                 }
             }
         } catch (e) {
             if (isDevMode()) {
-            console.warn('[STCM] Save character failed:', e);
-            toastr.error(`Failed to save updates: ${e.message}`);
+                console.warn('[STCM] Save character failed:', e);
             }
+            toastr.error(`Failed to save updates: ${e.message}`);
         }
     });
 

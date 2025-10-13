@@ -627,6 +627,19 @@ font-size: .9em;
     box-sizing: border-box;
 }
 
+.stcmCharEditModal .modalBody {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: calc(90vh - 100px);
+    padding: 16px;
+    position: relative;
+}
+
+.charEditSection {
+    padding-bottom: 80px; /* Make room for fixed footer */
+}
+
+
 /* Each field row */
 .charEditSection .editFieldRow {
     display: flex;
@@ -708,9 +721,13 @@ font-size: .9em;
 
 /* Save button */
 .stcm_char_edit_save_row {
-display: flex;
-margin-top: 10px;
-justify-content: flex-end;
+    /* Styles are set inline in JS, but this ensures consistency */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.stcm_char_edit_save_row button {
+    transition: all 0.2s ease;
 }
 
 .stcm_char_edit_save {
