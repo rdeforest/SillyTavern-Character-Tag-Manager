@@ -59,6 +59,7 @@ import {
 import {
     renderCharacterList,
     stcmCharState,
+    watchCharacterPanel
 } from "./stcm_characters.js";
 
 import { injectStcmSettingsPanel, updateDefaultTagManagerVisibility, updateRecentChatsVisibility, STCM_feedbackSendIfDue } from './settings-drawer.js';
@@ -975,6 +976,7 @@ eventSource.on(event_types.APP_READY, async () => {
     injectTagManagerControlButton();      // Tag filter bar
     observeTagViewInjection();    // Tag view list
     injectSidebarFolders(STCM.sidebarFolders, characters);  // <--- use sidebarFolders!
+    watchCharacterPanel();
     watchSidebarFolderInjection(); 
     hookFolderSidebarEvents();
     hideFolderedCharactersOutsideSidebar(STCM.sidebarFolders);

@@ -641,6 +641,110 @@ function openCharEditModal(char) {
     modal.style.zIndex = getNextZIndex();
 }
 
+// Add this function to inject the button into the native character panel
+function injectStcmEditButton() {
+    const avatarControls = document.getElementById('avatar_controls');
+    if (!avatarControls) return;
+
+    // Check if button already exists
+    if (document.getElementById('stcm_quick_edit_button')) return;
+
+    // Create the STCM quick edit button
+    const stcmEditBtn = document.createElement('div');
+    stcmEditBtn.id = 'stcm_quick_edit_button';
+    stcmEditBtn.className = 'menu_button fa-solid fa-pen-to-square interactable';
+    stcmEditBtn.title = 'Open in STCM Character Editor';
+    stcmEditBtn.setAttribute('data-i18n', '[title]Open in STCM Character Editor');
+    stcmEditBtn.setAttribute('tabindex', '0');
+    stcmEditBtn.setAttribute('role', 'button');
+    stcmEditBtn.style.color = '#4a9eff'; // Distinctive color to differentiate from native buttons
+
+    // Add click handler
+    stcmEditBtn.addEventListener('click', () => {
+        try {
+            // Get the context to find the current character
+            const context = SillyTavern.getContext();
+            const characterId = context?.characterId;
+
+            if (!characterId) {
+                toastr.warning('No character is currently selected.');
+                return;
+            }
+
+            // Find the character by avatar (which is the characterId)
+            const char = characters.find(c => c.avatar === characterId);
+
+            if (!char) {
+                toastr.error('Could not find character data.');
+                return;
+            }
+
+            // Open the STCM character edit modal
+            openCharEditModal(char);
+
+        } catch (error) {
+            console.error('[STCM] Failed to open character edit modal:', error);
+            toastr.error('Failed to open STCM character editor.');
+        }
+    });
+
+    // Find the buttons block container
+    const buttonsBlock = avatarControls.querySelector('.form_create_bottom_buttons_block');
+    if (!buttonsBlock) return;
+
+    // Insert the button after the favorite button (or at the beginning if favorite not found)
+    const favoriteButton = document.getElementById('favorite_button');
+    if (favoriteButton) {
+        favoriteButton.after(stcmEditBtn);
+    } else {
+        buttonsBlock.insertBefore(stcmEditBtn, buttonsBlock.firstChild);
+    }
+}
+
+// Add this to watch for when the character panel opens/changes
+function watchCharacterPanel() {
+    // Watch for character changes
+    const context = SillyTavern.getContext();
+    if (context?.eventSource && context?.event_types?.CHARACTER_EDITED) {
+        context.eventSource.on(context.event_types.CHARACTER_EDITED, () => {
+            // Re-inject button in case the panel was rebuilt
+            setTimeout(() => injectStcmEditButton(), 100);
+        });
+    }
+
+    // Use MutationObserver to detect when avatar_controls becomes visible
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const avatarControls = document.getElementById('avatar_controls');
+                if (avatarControls && avatarControls.style.display !== 'none') {
+                    injectStcmEditButton();
+                }
+            }
+            // Also watch for childList changes in case the panel is rebuilt
+            if (mutation.type === 'childList') {
+                const avatarControls = document.getElementById('avatar_controls');
+                if (avatarControls) {
+                    injectStcmEditButton();
+                }
+            }
+        }
+    });
+
+    // Start observing the right_nav_panel for changes
+    const rightNavPanel = document.getElementById('right-nav-panel');
+    if (rightNavPanel) {
+        observer.observe(rightNavPanel, {
+            attributes: true,
+            attributeFilter: ['style'],
+            childList: true,
+            subtree: true
+        });
+    }
+
+    // Also try to inject immediately in case panel is already open
+    injectStcmEditButton();
+}
 
 function toggleCharacterList(container, group) {
     const existingList = container.querySelector('.charList');
@@ -818,13 +922,12 @@ document.addEventListener('stcm:character_meta_changed', (e) => {
 });
 
 
-
-
 export {
     renderCharacterList,
-    toggleCharacterList
+    toggleCharacterList,
+    injectStcmEditButton,
+    watchCharacterPanel
 };
-
 export const stcmCharState = {
     isBulkDeleteCharMode: false,
     selectedCharacterIds: new Set(),
