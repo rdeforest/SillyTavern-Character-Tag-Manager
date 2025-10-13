@@ -1,3 +1,4 @@
 *.txt
 get context example.json
 *.js
+/examples

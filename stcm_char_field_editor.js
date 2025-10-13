@@ -27,8 +27,6 @@ const CHARACTER_FIELDS = [
 
 // Store workshop state
 let currentCharacter = null;
-let modal = null;
-let overlay = null;
 let selectedFields = new Set(); // Fields to edit
 let contextFields = new Set();  // Fields to include as context
 let miniTurns = [];
@@ -39,7 +37,7 @@ const STATE_KEY = () => {
     return `stcm_field_editor_state_${id}`;
 };
 
-function saveSession() {
+function saveSession_cfe() {
     try {
         const state = {
             selectedFields: Array.from(selectedFields),
@@ -53,7 +51,8 @@ function saveSession() {
 }
 
 
-function loadSession() {
+
+function loadSession_cfe() {
     try {
         const stored = localStorage.getItem(STATE_KEY());
         if (stored) {
@@ -70,25 +69,7 @@ function loadSession() {
     }
 }
 
-function clearWorkshopState() {
-    ensureCtx();
-    try {
-        localStorage.removeItem(STATE_KEY());
-    } catch {}
 
-    miniTurns = [];
-    selectedFields = new Set();
-    contextFields = new Set();
-
-    if (modal && modal.parentNode) {
-        modal.remove();
-        modal = null;
-    }
-    if (overlay && overlay.parentNode) {
-        overlay.remove();
-        overlay = null;
-    }
-}
 
 // Helper functions
 function el(tag, className, text) {
@@ -158,6 +139,7 @@ function getFieldValue(char, fieldKey) {
 }
 
 // Set field value in character object using dot notation
+// Set field value in character object using dot notation
 function setFieldValue(char, fieldKey, newValue) {
     if (fieldKey === 'alternate_greetings') {
         // Handle alternate greetings as array, creating objects with .mes property
@@ -213,12 +195,22 @@ function setFieldValue(char, fieldKey, newValue) {
         }
     }
     
-    // Handle root-level fields that should be mirrored in data
+    // Handle root-level fields that should be mirrored in data - FIXED
     if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
-        // Set both root level and data field
-        char[fieldKey] = newValue;
+        // Ensure data object exists
         if (!char.data) char.data = {};
+        
+        // Set the value in both locations with proper synchronization
+        char[fieldKey] = newValue;
         char.data[fieldKey] = newValue;
+        
+        // Also ensure other spec-related fields are consistent
+        if (!char.spec) {
+            char.spec = char.data.spec || 'chara_card_v2';
+        }
+        if (!char.spec_version) {
+            char.spec_version = char.data.spec_version || '2.0';
+        }
         return;
     }
     
@@ -322,6 +314,8 @@ function openFieldEditor(character) {
     }
 
     currentCharacter = character;
+
+    loadSession_cfe();
     
     // Find the character edit modal
     const editModalId = `stcmCharEditModal-${character.avatar}`;
@@ -416,7 +410,7 @@ function syncFieldSelectionsFromMainPanel() {
     });
     
     // Save the synced selections
-    saveSession();
+    saveSession_cfe();
 }
 
 function closeFieldEditor() {
@@ -431,6 +425,7 @@ function closeFieldEditor() {
             // Clean up event listener
             if (fieldEditorPanel.syncHandler) {
                 document.removeEventListener('stcm-sync-field-selections', fieldEditorPanel.syncHandler);
+                delete fieldEditorPanel.syncHandler;
             }
             
             fieldEditorPanel.remove();
@@ -458,8 +453,9 @@ function closeFieldEditor() {
     
     // Clear state
     currentCharacter = null;
-    selectedFields = new Set();
-    miniTurns = [];
+    selectedFields.clear(); 
+    contextFields.clear();  
+    miniTurns.length = 0;   
 }
 
 // Toggle visibility of field editor checkboxes
@@ -470,12 +466,6 @@ function toggleFieldEditorCheckboxes(modal, show) {
     checkboxContainers.forEach(container => {
         container.style.display = show ? 'flex' : 'none';
     });
-}
-
-function refreshFieldEditorContent() {
-    // This function ensures the buildCharacterData() function uses current character data
-    // No visual updates needed - just ensures data freshness for LLM calls
-    // The buildCharacterData() function already pulls live data from currentCharacter
 }
 
 function createFieldEditorPanel() {
@@ -660,7 +650,7 @@ function createFieldSelectionSection() {
         });
 
         // Save selections
-        saveSession();
+        saveSession_cfe();
         
         toastr.success(`Selected ${allFields.length} fields for ${type} (excluding prompt overrides and metadata)`);
     }
@@ -683,7 +673,7 @@ function createFieldSelectionSection() {
         contextFields.clear();
 
         // Save selections
-        saveSession();
+        saveSession_cfe();
         
         toastr.success('Cleared all field selections');
     }
@@ -1028,7 +1018,7 @@ function onDeleteMessage(messageWrap) {
     messageWrap.remove();
     
     // Save updated session
-    saveSession();
+    saveSession_cfe();
     
     toastr.success('Message deleted');
 }
@@ -1051,7 +1041,7 @@ function onClearConversation() {
     }
     
     // Save the cleared state
-    saveSession();
+    saveSession_cfe();
     
     toastr.success('Conversation cleared');
 }
@@ -1143,7 +1133,7 @@ async function onSendToLLM(isRegen = false) {
             appendBubble('assistant', llmResponse, { ts: assistantTurn.ts });
         }
 
-        saveSession();
+        saveSession_cfe();
 
     } catch (error) {
         console.error('[STCM Field Editor] LLM call failed:', error);
@@ -1158,7 +1148,7 @@ async function onSendToLLM(isRegen = false) {
         toastr.error(`LLM Error: ${errorMsg}`);
     }
 
-    saveSession();
+    saveSession_cfe();
 }
 
 async function callLLMForFieldEditing(userInstruction) {
@@ -1640,12 +1630,19 @@ async function saveCharacterChanges(character, changes) {
         
         // Build the update payload using the same structure as the character panel
         for (const [fieldKey, newValue] of Object.entries(changes)) {
-            // Handle root-level fields specially
+            // Handle root-level fields specially - FIXED
             if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
-                // Set both root level and in data object
+                // Set both root level and in data object with proper synchronization
                 payload[fieldKey] = newValue;
                 if (!payload.data) payload.data = {};
                 payload.data[fieldKey] = newValue;
+                
+                // Ensure spec consistency
+                if (!payload.spec && character.spec) payload.spec = character.spec;
+                if (!payload.spec_version && character.spec_version) payload.spec_version = character.spec_version;
+                if (!payload.data.spec && character.data?.spec) payload.data.spec = character.data.spec;
+                if (!payload.data.spec_version && character.data?.spec_version) payload.data.spec_version = character.data.spec_version;
+                
             } else if (fieldKey === 'alternate_greetings') {
                 // Handle alternate greetings specially
                 const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
@@ -1704,11 +1701,16 @@ async function saveCharacterChanges(character, changes) {
             try {
                 const jsonData = JSON.parse(currentCharacter.json_data);
                 for (const [fieldKey, newValue] of Object.entries(changes)) {
-                    // Apply the same logic to json_data
+                    // Apply the same logic to json_data with proper synchronization
                     if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
                         jsonData[fieldKey] = newValue;
                         if (!jsonData.data) jsonData.data = {};
                         jsonData.data[fieldKey] = newValue;
+                        
+                        // Ensure spec consistency in json_data too
+                        if (!jsonData.spec) jsonData.spec = jsonData.data?.spec || 'chara_card_v2';
+                        if (!jsonData.spec_version) jsonData.spec_version = jsonData.data?.spec_version || '2.0';
+                        
                     } else if (fieldKey === 'alternate_greetings') {
                         const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
                         const greetings = messages.map(mes => ({ mes }));
@@ -1763,37 +1765,6 @@ async function saveCharacterChanges(character, changes) {
     }
 }
 
-// Make modal draggable (copied from greeting workshop)
-function makeDraggable(panel, handle) {
-    let isDragging = false;
-    let startX, startY, startLeft, startTop;
-
-    handle.style.cursor = 'move';
-
-    handle.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = panel.getBoundingClientRect();
-        startLeft = rect.left;
-        startTop = rect.top;
-        e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        const deltaX = e.clientX - startX;
-        const deltaY = e.clientY - startY;
-        panel.style.left = `${startLeft + deltaX}px`;
-        panel.style.top = `${startTop + deltaY}px`;
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
-    });
-
-    document.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
-}
 
 // Export the main function
 export function openCharacterFieldEditor(character) {
