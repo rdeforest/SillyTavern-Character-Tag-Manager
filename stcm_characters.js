@@ -583,152 +583,62 @@ async function renderCharacterList() {
 }
 
 function openCharEditModal(char) {
-    const existingModal = document.getElementById('stcmCharEditModal');
-    if (existingModal) existingModal.remove();
+    if (!char) return;
 
-    const modal = document.createElement('div');
-    modal.id = 'stcmCharEditModal';
-    modal.className = 'stcm_modal';
+    let modal = document.getElementById(`stcmCharEditModal-${char.avatar}`);
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = `stcmCharEditModal-${char.avatar}`;
+        modal.className = 'stcmCharEditModal modalWindow';
+        modal.style.zIndex = getNextZIndex();
+        document.body.appendChild(modal);
 
-    const content = document.createElement('div');
-    content.className = 'stcm_modal_content stcm_edit_char_modal';
+        const header = document.createElement('div');
+        header.className = 'modalHeader';
+        header.id = `stcmCharEditModalHeader-${char.avatar}`;
 
-    const header = document.createElement('div');
-    header.className = 'stcm_modal_header drag-handle';
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
-    header.style.gap = '10px';
+        const title = document.createElement('div');
+        title.className = 'modalTitle';
+        title.textContent = `Edit Character: ${char.name}`;
 
-    // Left side - Title
-    const titleWrapper = document.createElement('div');
-    titleWrapper.style.display = 'flex';
-    titleWrapper.style.alignItems = 'center';
-    titleWrapper.style.gap = '10px';
-    titleWrapper.style.flex = '1';
+        const fieldEditorBtn = document.createElement('button');
+        fieldEditorBtn.className = 'stcm_menu_button interactable stcm_field_editor_btn';
+        fieldEditorBtn.textContent = 'AI Char Edit';
+        fieldEditorBtn.title = 'Edit character fields with AI assistance';
+        fieldEditorBtn.style.marginLeft = '8px';
+        fieldEditorBtn.onclick = () => openCharacterFieldEditor(char);
 
-    const title = document.createElement('span');
-    title.textContent = `Edit: ${char.name}`;
-    title.style.fontWeight = 'bold';
-    titleWrapper.appendChild(title);
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'stcm_menu_button interactable modal-close modalCloseBtn';
+        closeBtn.textContent = '×';
+        closeBtn.onclick = () => modal.remove();
 
-    // Center - Save Changes Button
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save Changes';
-    saveBtn.className = 'stcm_menu_button stcm_char_edit_save small';
-    saveBtn.title = 'Save all changes to character';
-    saveBtn.style.cssText = `
-        margin: 0;
-        padding: 6px 16px;
-        font-weight: 600;
-    `;
+        const avatarSrc = `/characters/${char.avatar}`;
+        const { minimizeBtn } = createMinimizableModalControls(modal, `Editing: ${char.name}`, avatarSrc);
 
-    // Right side - Controls (AI Editor and Close)
-    const controlsWrapper = document.createElement('div');
-    controlsWrapper.style.display = 'flex';
-    controlsWrapper.style.alignItems = 'center';
-    controlsWrapper.style.gap = '8px';
+        header.appendChild(title);
+        header.appendChild(fieldEditorBtn);
+        header.appendChild(minimizeBtn);
+        header.appendChild(closeBtn);
 
-    // AI Field Editor Button
-    const aiEditorBtn = document.createElement('button');
-    aiEditorBtn.className = 'stcm_menu_button small';
-    aiEditorBtn.style.cssText = `
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 12px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: none;
-        color: white;
-        font-weight: 600;
-    `;
-    
-    const aiIcon = document.createElement('span');
-    aiIcon.textContent = '🤖';
-    aiIcon.style.fontSize = '14px';
-    
-    const aiText = document.createElement('span');
-    aiText.textContent = 'AI Field Editor';
-    
-    aiEditorBtn.appendChild(aiIcon);
-    aiEditorBtn.appendChild(aiText);
-    aiEditorBtn.title = 'Open AI-powered field editor';
+        const body = document.createElement('div');
+        body.className = 'modalBody';
+        body.appendChild(createEditSectionForCharacter(char));
 
-    aiEditorBtn.addEventListener('click', async () => {
-        try {
-            const { openCharacterFieldEditor } = await import('./stcm_char_field_editor.js');
-            openCharacterFieldEditor(char);
-        } catch (error) {
-            console.error('[STCM] Failed to open AI field editor:', error);
-            toastr.error('Failed to open AI field editor');
-        }
-    });
+        modal.appendChild(header);
+        modal.appendChild(body);
 
-    const close = document.createElement('span');
-    close.className = 'stcm_modal_close';
-    close.innerHTML = '&times;';
-    close.addEventListener('click', () => modal.remove());
-
-    controlsWrapper.appendChild(aiEditorBtn);
-    controlsWrapper.appendChild(close);
-
-    header.appendChild(titleWrapper);
-    header.appendChild(saveBtn);
-    header.appendChild(controlsWrapper);
-
-    const body = document.createElement('div');
-    body.className = 'stcm_modal_body';
-
-    const editSection = createEditSectionForCharacter(char);
-    body.appendChild(editSection);
-
-    content.appendChild(header);
-    content.appendChild(body);
-    modal.appendChild(content);
-    document.body.appendChild(modal);
-
-    // Set up save button click handler
-    saveBtn.addEventListener('click', async () => {
-        const inputs = editSection.querySelectorAll('.charEditInput');
-        const changes = {};
-        
-        inputs.forEach(i => {
-            if (!i.readOnly) {
-                changes[i.name] = i.value;
-            }
+        modal.addEventListener('mousedown', () => {
+            modal.style.zIndex = getNextZIndex();
         });
 
-        try {
-            await stcm_saveCharacter(char, changes, true);
-            toastr.success(`Saved updates to ${char.name}`);
-            
-            // Refresh our extension's character list
-            renderCharacterList();
-            
-            // Call our module's save and reload function
-            try {
-                const { callSaveandReload } = await import("./index.js");
-                if (typeof callSaveandReload === 'function') {
-                    await callSaveandReload();
-                }
-            } catch (error) {
-                if (isDevMode()) {
-                    console.warn('[STCM] Could not call module reload:', error);
-                }
-            }
-        } catch (e) {
-            if (isDevMode()) {
-                console.warn('[STCM] Save character failed:', e);
-            }
-            toastr.error(`Failed to save updates: ${e.message}`);
-        }
-    });
+        clampModalSize(modal, 20);
+        makeModalDraggable(modal, header, () => saveModalPosSize(modal));
+        saveModalPosSize(modal);
+    }
 
-    makeModalDraggable(modal, header);
-
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-    });
+    modal.style.display = 'block';
+    modal.style.zIndex = getNextZIndex();
 }
 
 // Add this function to inject the button into the native character panel
