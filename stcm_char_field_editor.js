@@ -236,6 +236,20 @@ function buildSystemPrompt() {
     }).join(', ');
 
     const currentData = buildCharacterData();
+    
+    // Separate the data into edit vs context for clarity
+    const editData = {};
+    const contextData = {};
+    
+    selectedFields.forEach(fieldKey => {
+        editData[fieldKey] = currentData[fieldKey];
+    });
+    
+    contextFields.forEach(fieldKey => {
+        if (!selectedFields.has(fieldKey)) {
+            contextData[fieldKey] = currentData[fieldKey];
+        }
+    });
 
     return [
         `You are a Character Development Assistant helping to edit character card fields for "${charName}".`,
@@ -280,11 +294,14 @@ function buildSystemPrompt() {
         '• NEVER replace or modify template variables like {{char}}, {{user}}, <start>, <START>, etc. - keep them exactly as they are',
         '• Template variables are important placeholders and must be preserved in their original form',
         '',
-        'CURRENT CHARACTER DATA:',
-        JSON.stringify(currentData, null, 2),
+        '=== FIELDS TO EDIT ===',
+        selectedFields.size > 0 ? JSON.stringify(editData, null, 2) : '(No fields selected for editing)',
+        '',
+        contextFields.size > 0 ? '=== CONTEXT FIELDS (reference only, DO NOT modify these) ===' : '',
+        contextFields.size > 0 ? JSON.stringify(contextData, null, 2) : '',
         '',
         'USER REQUEST:'
-    ].join('\n');
+    ].filter(line => line !== null && line !== undefined).join('\n');
 }
 
 // Build character data object for the LLM
@@ -292,9 +309,20 @@ function buildCharacterData() {
     if (!currentCharacter) return {};
     
     const data = {};
+    
+    // Include selected fields (fields to edit)
     selectedFields.forEach(fieldKey => {
         const value = getFieldValue(currentCharacter, fieldKey);
         data[fieldKey] = value;
+    });
+    
+    // Include context fields (fields for reference)
+    contextFields.forEach(fieldKey => {
+        // Only include if not already in selectedFields (avoid duplicates)
+        if (!selectedFields.has(fieldKey)) {
+            const value = getFieldValue(currentCharacter, fieldKey);
+            data[fieldKey] = value;
+        }
     });
     
     return data;
@@ -468,8 +496,8 @@ function createFieldEditorPanel() {
     panel.style.width = '400px';
     panel.style.minWidth = '400px';
     panel.style.maxWidth = '500px';
-    panel.style.borderLeft = '1px solid var(--stcm-gw-border)';
-    panel.style.paddingLeft = '16px';
+    panel.style.border = '1px solid var(--stcm-gw-border)';
+    panel.style.padding = '16px';
     panel.style.display = 'flex';
     panel.style.flexDirection = 'column';
     panel.style.height = '100%';
