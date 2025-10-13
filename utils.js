@@ -128,16 +128,27 @@ async function stcm_saveCharacter(character, changes = null, updateUI = true) {
         // Create a complete copy of the character
         const updatedCharacter = JSON.parse(JSON.stringify(character));
         
-        // Apply any changes if provided, with normalization
+        // Apply any changes if provided, with normalization and validation
         if (changes && typeof changes === 'object') {
             const normalizedChanges = {};
+            const rejectedFields = [];
+            
             for (const [fieldKey, newValue] of Object.entries(changes)) {
                 // Normalize the value before applying
                 normalizedChanges[fieldKey] = normalizeValue(newValue);
             }
             
             for (const [fieldKey, normalizedValue] of Object.entries(normalizedChanges)) {
-                setFieldValue(updatedCharacter, fieldKey, normalizedValue);
+                const success = setFieldValue(updatedCharacter, fieldKey, normalizedValue);
+                if (!success) {
+                    rejectedFields.push(fieldKey);
+                }
+            }
+            
+            // Warn user if any fields were rejected
+            if (rejectedFields.length > 0) {
+                console.warn('[STCM] Rejected invalid fields:', rejectedFields);
+                toastr.warning(`Ignored invalid fields: ${rejectedFields.join(', ')}`);
             }
         }
         
@@ -264,8 +275,24 @@ async function stcm_saveCharacter(character, changes = null, updateUI = true) {
  * @param {Object} char - Character object
  * @param {string} fieldKey - Field key (supports dot notation like 'data.creator')
  * @param {*} newValue - New value to set
+ * @returns {boolean} - True if field was set, false if invalid
  */
 function setFieldValue(char, fieldKey, newValue) {
+    // Define all valid root-level fields based on the character card schema
+    const VALID_ROOT_FIELDS = [
+        'name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example',
+        'creatorcomment', 'avatar', 'chat', 'talkativeness', 'fav', 'tags',
+        'spec', 'spec_version', 'create_date', 'last_mes'
+    ];
+
+    // Handle unified.creator_notes FIRST - before any other checks
+    if (fieldKey === 'unified.creator_notes') {
+        char.creatorcomment = newValue;
+        if (!char.data) char.data = {};
+        char.data.creator_notes = newValue;
+        return true;
+    }
+    
     // Handle data.alternate_greetings specifically
     if (fieldKey === 'data.alternate_greetings') {
         if (!char.data) char.data = {};
@@ -280,7 +307,7 @@ function setFieldValue(char, fieldKey, newValue) {
         
         char.data.alternate_greetings = greetings;
         char.alternate_greetings = greetings;
-        return;
+        return true;
     }
     
     if (fieldKey === 'alternate_greetings') {
@@ -298,7 +325,29 @@ function setFieldValue(char, fieldKey, newValue) {
         if (!char.data) char.data = {};
         char.data.alternate_greetings = greetings;
         char.alternate_greetings = greetings;
-        return;
+        return true;
+    }
+    
+    // Handle individual alternate greetings
+    if (fieldKey.startsWith('alternate_greetings[') && fieldKey.includes('.mes')) {
+        const match = fieldKey.match(/alternate_greetings\[(\d+)\]\.mes/);
+        if (match) {
+            const index = parseInt(match[1]);
+            if (!char.data) char.data = {};
+            if (!char.data.alternate_greetings) char.data.alternate_greetings = [];
+            if (!char.alternate_greetings) char.alternate_greetings = [];
+            
+            while (char.data.alternate_greetings.length <= index) {
+                char.data.alternate_greetings.push({ mes: '' });
+            }
+            while (char.alternate_greetings.length <= index) {
+                char.alternate_greetings.push({ mes: '' });
+            }
+            
+            char.data.alternate_greetings[index] = { mes: newValue };
+            char.alternate_greetings[index] = { mes: newValue };
+            return true;
+        }
     }
     
     // Shared fields between root level and data object
@@ -308,7 +357,7 @@ function setFieldValue(char, fieldKey, newValue) {
         if (!char.data) char.data = {};
         char[fieldKey] = newValue;
         char.data[fieldKey] = newValue;
-        return;
+        return true;
     }
     
     // Handle nested data fields
@@ -325,28 +374,20 @@ function setFieldValue(char, fieldKey, newValue) {
         }
         
         target[keys[keys.length - 1]] = newValue;
-        return;
+        return true;
     }
     
-    // Handle unified.creator_notes
-    if (fieldKey === 'unified.creator_notes') {
-        char.creatorcomment = newValue;
-        if (!char.data) char.data = {};
-        char.data.creator_notes = newValue;
-        return;
+    // Handle valid root-level fields only
+    if (VALID_ROOT_FIELDS.includes(fieldKey)) {
+        char[fieldKey] = newValue;
+        return true;
     }
     
-    // Handle other root-level fields
-    const keys = fieldKey.split('.');
-    let target = char;
-    
-    for (let i = 0; i < keys.length - 1; i++) {
-        const key = keys[i];
-        if (!target[key]) target[key] = {};
-        target = target[key];
+    // If we get here, the field is invalid - log and reject
+    if (isDevMode()) {
+        console.warn(`[STCM] Rejected invalid field key: "${fieldKey}"`);
     }
-    
-    target[keys[keys.length - 1]] = newValue;
+    return false;
 }
 
 function resetModalScrollPositions() {
