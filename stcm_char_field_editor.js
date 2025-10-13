@@ -1,3 +1,4 @@
+import { stcm_saveCharacter } from "./utils.js"; 
 // stcm_char_field_editor.js
 // SillyTavern Character Manager – Character Field Editor Workshop
 // Opens a modal with LLM integration to edit individual character fields
@@ -1627,18 +1628,11 @@ async function saveCharacterChanges(character, changes) {
         for (const [fieldKey, newValue] of Object.entries(changes)) {
             const currentValue = getFieldValue(character, fieldKey);
             
-            // Normalize values for comparison
-            const normalizedCurrent = normalizeFieldValue(currentValue, fieldKey);
-            const normalizedNew = normalizeFieldValue(newValue, fieldKey);
-            
-            // Only include if values are actually different
-            if (normalizedCurrent !== normalizedNew) {
+            // Simple comparison - let the universal save handle normalization
+            if (currentValue !== newValue) {
                 actualChanges[fieldKey] = newValue;
                 hasChanges = true;
-                console.log(`[STCM Field Editor] Field "${fieldKey}" changed:`, {
-                    from: normalizedCurrent?.substring(0, 100),
-                    to: normalizedNew?.substring(0, 100)
-                });
+                console.log(`[STCM Field Editor] Field "${fieldKey}" changed`);
             } else {
                 console.log(`[STCM Field Editor] Field "${fieldKey}" unchanged, skipping`);
             }
@@ -1652,121 +1646,26 @@ async function saveCharacterChanges(character, changes) {
         
         console.log(`[STCM Field Editor] Saving ${Object.keys(actualChanges).length} changed fields:`, Object.keys(actualChanges));
         
-        // Create a COMPLETE character object with the changes applied
-        const updatedCharacter = JSON.parse(JSON.stringify(character)); // Deep clone
+        // Use the universal save function from utils.js
+        await stcm_saveCharacter(character, actualChanges, false);
         
-        // Apply the actual changes to the cloned character
-        for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
-            setFieldValue(updatedCharacter, fieldKey, newValue);
-        }
-        
-        // Now build FormData from the COMPLETE updated character (like the working example)
-        const formData = new FormData();
-        
-        // Basic fields from root level
-        formData.append('ch_name', updatedCharacter.name || updatedCharacter.data?.name || '');
-        formData.append('avatar_url', updatedCharacter.avatar || '');
-        formData.append('description', updatedCharacter.description || updatedCharacter.data?.description || '');
-        formData.append('first_mes', updatedCharacter.first_mes || updatedCharacter.data?.first_mes || '');
-        formData.append('scenario', updatedCharacter.scenario || updatedCharacter.data?.scenario || '');
-        formData.append('personality', updatedCharacter.personality || updatedCharacter.data?.personality || '');
-        formData.append('mes_example', updatedCharacter.mes_example || updatedCharacter.data?.mes_example || '');
-        formData.append('creatorcomment', updatedCharacter.creatorcomment || updatedCharacter.data?.creator_notes || '');
-        formData.append('tags', (updatedCharacter.tags || []).join(','));
-
-        // Get and add the avatar file
-        try {
-            const avatarUrl = ctx.getThumbnailUrl('avatar', updatedCharacter.avatar);
-            const avatarBlob = await fetch(avatarUrl).then(res => res.blob());
-            const avatarFile = new File([avatarBlob], 'avatar.png', { type: 'image/png' });
-            formData.append('avatar', avatarFile);
-        } catch (avatarError) {
-            console.warn('[STCM Field Editor] Could not fetch avatar file:', avatarError);
-        }
-
-        // Extended character data fields from data object
-        const charInnerData = updatedCharacter.data || {};
-        
-        formData.append('creator', charInnerData.creator || '');
-        formData.append('character_version', charInnerData.character_version || '');
-        formData.append('creator_notes', charInnerData.creator_notes || '');
-        formData.append('system_prompt', charInnerData.system_prompt || '');
-        formData.append('post_history_instructions', charInnerData.post_history_instructions || '');
-
-        // Extensions data
-        const extensions = charInnerData.extensions || {};
-        formData.append('chat', updatedCharacter.chat || '');
-        formData.append('create_date', updatedCharacter.create_date || '');
-        formData.append('last_mes', updatedCharacter.last_mes || '');
-        formData.append('talkativeness', extensions.talkativeness ?? '');
-        formData.append('fav', String(extensions.fav ?? false));
-        formData.append('world', extensions.world || '');
-
-        // Depth prompt data
-        const depthPrompt = extensions.depth_prompt || {};
-        formData.append('depth_prompt_prompt', depthPrompt.prompt || '');
-        formData.append('depth_prompt_depth', String(depthPrompt.depth ?? 4));
-        formData.append('depth_prompt_role', depthPrompt.role || '');
-
-        // Alternate greetings - extract strings from objects if needed
-        if (Array.isArray(charInnerData.alternate_greetings)) {
-            for (const greeting of charInnerData.alternate_greetings) {
-                // Extract the 'mes' property if it's an object, otherwise use as-is
-                const greetingText = typeof greeting === 'object' && greeting.mes 
-                    ? greeting.mes 
-                    : greeting;
-                if (greetingText) {
-                    formData.append('alternate_greetings', greetingText);
-                }
-            }
-        }
-
-        // CRITICAL: Pass the complete json_data object
-        formData.append('json_data', JSON.stringify(updatedCharacter));
-
-        // Get headers and remove Content-Type (let browser set it for FormData)
-        const headers = ctx.getRequestHeaders();
-        delete headers['Content-Type'];
-
-        console.log('[STCM Field Editor] Sending complete character data to /edit endpoint');
-
-        const result = await fetch('/api/characters/edit', {
-            method: 'POST',
-            headers: headers,
-            body: formData,
-            cache: 'no-cache'
-        });
-
-        if (!result.ok) {
-            let errorMessage = 'Failed to save character changes.';
-            try {
-                const errorText = await result.text();
-                if (errorText) {
-                    errorMessage = `Character not saved. Error: ${errorText}`;
-                }
-            } catch {
-                errorMessage = `Failed to save character changes. Status: ${result.status} ${result.statusText}`;
-            }
-            throw new Error(errorMessage);
-        }
-
         toastr.success(`Successfully saved ${Object.keys(actualChanges).length} field changes!`);
 
-        // Update the local character object with the actual changes
+        // Update the local character object - stcm_saveCharacter already does this via Object.assign
+        // But we still update currentCharacter reference
         for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
             setFieldValue(currentCharacter, fieldKey, newValue);
         }
 
-        // Use SillyTavern's native character refresh methods
+        // Manually trigger UI refresh since we passed updateUI=false
         if (typeof ctx?.getCharacters === 'function') {
             await ctx.getCharacters();
         }
         
-        // Trigger character list refresh event if available
         if (ctx?.eventSource && ctx?.event_types?.CHARACTER_EDITED) {
             ctx.eventSource.emit(ctx.event_types.CHARACTER_EDITED, character);
         }
-        
+
         // Refresh our extension's character list
         if (typeof renderCharacterList === 'function') {
             renderCharacterList();
@@ -1784,40 +1683,10 @@ async function saveCharacterChanges(character, changes) {
 
     } catch (error) {
         console.error('[STCM Field Editor] Save failed:', error);
+        toastr.error(`Failed to save: ${error.message}`);
         throw error;
     }
 }
-
-// Helper function to normalize field values for accurate comparison
-function normalizeFieldValue(value, fieldKey) {
-    if (value === null || value === undefined) {
-        return '';
-    }
-    
-    if (typeof value !== 'string') {
-        return String(value);
-    }
-    
-    // Normalize whitespace and line endings
-    let normalized = value.trim();
-    
-    // For alternate greetings, normalize the separator format
-    if (fieldKey === 'alternate_greetings') {
-        // Normalize different separator formats to consistent format
-        normalized = normalized
-            .replace(/\n\n---\n\n/g, '\n\n---\n\n')  // Ensure consistent separator
-            .replace(/\r\n/g, '\n')                    // Normalize line endings
-            .replace(/\r/g, '\n');                     // Handle old Mac line endings
-    } else {
-        // For other fields, just normalize line endings
-        normalized = normalized
-            .replace(/\r\n/g, '\n')
-            .replace(/\r/g, '\n');
-    }
-    
-    return normalized;
-}
-
 
 // Export the main function
 export function openCharacterFieldEditor(character) {

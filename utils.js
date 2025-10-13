@@ -83,6 +83,256 @@ function getCharacterNameById(id, charNameMap) {
     return charNameMap.get(id) || null;
 }
 
+function normalizeValue(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    
+    if (typeof value !== 'string') {
+        return String(value);
+    }
+    
+    // Normalize line endings to \n
+    return value
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .trim();
+}
+
+/**
+ * Universal character save function using the /edit endpoint with FormData
+ * Properly handles spec v2/v3 synchronization via charaFormatData
+ * @param {Object} character - The complete character object to save
+ * @param {Object} changes - Optional partial changes to apply before saving
+ * @param {boolean} updateUI - Whether to refresh the UI after saving
+ * @returns {Promise<boolean>} - True if save was successful
+ */
+async function stcm_saveCharacter(character, changes = null, updateUI = true) {
+    try {
+        ensureContext();
+        
+        // Create a complete copy of the character
+        const updatedCharacter = JSON.parse(JSON.stringify(character));
+        
+        // Apply any changes if provided, with normalization
+        if (changes && typeof changes === 'object') {
+            const normalizedChanges = {};
+            for (const [fieldKey, newValue] of Object.entries(changes)) {
+                // Normalize the value before applying
+                normalizedChanges[fieldKey] = normalizeValue(newValue);
+            }
+            
+            for (const [fieldKey, normalizedValue] of Object.entries(normalizedChanges)) {
+                setFieldValue(updatedCharacter, fieldKey, normalizedValue);
+            }
+        }
+        
+        // Build FormData from the complete updated character
+        const formData = new FormData();
+        
+        // Basic fields from root level
+        formData.append('ch_name', updatedCharacter.name || updatedCharacter.data?.name || '');
+        formData.append('avatar_url', updatedCharacter.avatar || '');
+        formData.append('description', updatedCharacter.description || updatedCharacter.data?.description || '');
+        formData.append('first_mes', updatedCharacter.first_mes || updatedCharacter.data?.first_mes || '');
+        formData.append('scenario', updatedCharacter.scenario || updatedCharacter.data?.scenario || '');
+        formData.append('personality', updatedCharacter.personality || updatedCharacter.data?.personality || '');
+        formData.append('mes_example', updatedCharacter.mes_example || updatedCharacter.data?.mes_example || '');
+        formData.append('creatorcomment', updatedCharacter.creatorcomment || updatedCharacter.data?.creator_notes || '');
+        formData.append('tags', (updatedCharacter.tags || []).join(','));
+
+        // Get and add the avatar file
+        try {
+            const avatarUrl = context.getThumbnailUrl('avatar', updatedCharacter.avatar);
+            const avatarBlob = await fetch(avatarUrl).then(res => res.blob());
+            const avatarFile = new File([avatarBlob], 'avatar.png', { type: 'image/png' });
+            formData.append('avatar', avatarFile);
+        } catch (avatarError) {
+            console.warn('[STCM] Could not fetch avatar file:', avatarError);
+        }
+
+        // Extended character data fields from data object
+        const charInnerData = updatedCharacter.data || {};
+        
+        formData.append('creator', charInnerData.creator || '');
+        formData.append('character_version', charInnerData.character_version || '');
+        formData.append('creator_notes', charInnerData.creator_notes || '');
+        formData.append('system_prompt', charInnerData.system_prompt || '');
+        formData.append('post_history_instructions', charInnerData.post_history_instructions || '');
+
+        // Extensions data
+        const extensions = charInnerData.extensions || {};
+        formData.append('chat', updatedCharacter.chat || '');
+        formData.append('create_date', updatedCharacter.create_date || '');
+        formData.append('last_mes', updatedCharacter.last_mes || '');
+        formData.append('talkativeness', extensions.talkativeness ?? '');
+        formData.append('fav', String(extensions.fav ?? false));
+        formData.append('world', extensions.world || '');
+
+        // Depth prompt data
+        const depthPrompt = extensions.depth_prompt || {};
+        formData.append('depth_prompt_prompt', depthPrompt.prompt || '');
+        formData.append('depth_prompt_depth', String(depthPrompt.depth ?? 4));
+        formData.append('depth_prompt_role', depthPrompt.role || '');
+
+        // Alternate greetings - extract strings from objects if needed
+        if (Array.isArray(charInnerData.alternate_greetings)) {
+            for (const greeting of charInnerData.alternate_greetings) {
+                // Extract the 'mes' property if it's an object, otherwise use as-is
+                const greetingText = typeof greeting === 'object' && greeting.mes 
+                    ? greeting.mes 
+                    : greeting;
+                if (greetingText) {
+                    formData.append('alternate_greetings', greetingText);
+                }
+            }
+        }
+
+        // CRITICAL: Pass the complete json_data object
+        formData.append('json_data', JSON.stringify(updatedCharacter));
+
+        // Get headers and remove Content-Type (let browser set it for FormData)
+        const headers = context.getRequestHeaders();
+        delete headers['Content-Type'];
+
+        const response = await fetch('/api/characters/edit', {
+            method: 'POST',
+            headers: headers,
+            body: formData,
+            cache: 'no-cache'
+        });
+
+        if (!response.ok) {
+            let errorMessage = 'Failed to save character.';
+            try {
+                const errorText = await response.text();
+                if (errorText) {
+                    errorMessage = `Character not saved. Error: ${errorText}`;
+                }
+            } catch {
+                errorMessage = `Failed to save character. Status: ${response.status} ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
+        }
+
+        // Update the original character object with the changes
+        Object.assign(character, updatedCharacter);
+
+        // Update json_data field if it exists
+        if (character.json_data) {
+            character.json_data = JSON.stringify(updatedCharacter);
+        }
+
+        if (updateUI) {
+            // Use SillyTavern's native character refresh methods
+            if (typeof context.getCharacters === 'function') {
+                await context.getCharacters();
+            }
+            
+            // Trigger character edited event if available
+            if (context.eventSource && context.event_types?.CHARACTER_EDITED) {
+                context.eventSource.emit(context.event_types.CHARACTER_EDITED, character);
+            }
+        }
+
+        return true;
+
+    } catch (error) {
+        console.error('[STCM] Save character failed:', error);
+        throw error;
+    }
+}
+
+/**
+ * Helper function to set a field value in a character object using dot notation
+ * @param {Object} char - Character object
+ * @param {string} fieldKey - Field key (supports dot notation like 'data.creator')
+ * @param {*} newValue - New value to set
+ */
+function setFieldValue(char, fieldKey, newValue) {
+    // Handle data.alternate_greetings specifically
+    if (fieldKey === 'data.alternate_greetings') {
+        if (!char.data) char.data = {};
+        
+        // Ensure it's an array of objects with .mes property
+        let greetings = [];
+        if (Array.isArray(newValue)) {
+            greetings = newValue.map(item => 
+                typeof item === 'object' && item.mes ? item : { mes: String(item) }
+            );
+        }
+        
+        char.data.alternate_greetings = greetings;
+        char.alternate_greetings = greetings;
+        return;
+    }
+    
+    if (fieldKey === 'alternate_greetings') {
+        // Handle alternate greetings as array
+        let greetings = [];
+        if (typeof newValue === 'string') {
+            const messages = newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g);
+            greetings = messages.map(mes => ({ mes }));
+        } else if (Array.isArray(newValue)) {
+            greetings = newValue.map(item => 
+                typeof item === 'object' && item.mes ? item : { mes: String(item) }
+            );
+        }
+        
+        if (!char.data) char.data = {};
+        char.data.alternate_greetings = greetings;
+        char.alternate_greetings = greetings;
+        return;
+    }
+    
+    // Shared fields between root level and data object
+    const SHARED_SPEC_FIELDS = ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'];
+    
+    if (SHARED_SPEC_FIELDS.includes(fieldKey)) {
+        if (!char.data) char.data = {};
+        char[fieldKey] = newValue;
+        char.data[fieldKey] = newValue;
+        return;
+    }
+    
+    // Handle nested data fields
+    if (fieldKey.startsWith('data.')) {
+        if (!char.data) char.data = {};
+        const dataPath = fieldKey.substring(5);
+        const keys = dataPath.split('.');
+        let target = char.data;
+        
+        for (let i = 0; i < keys.length - 1; i++) {
+            const key = keys[i];
+            if (!target[key]) target[key] = {};
+            target = target[key];
+        }
+        
+        target[keys[keys.length - 1]] = newValue;
+        return;
+    }
+    
+    // Handle unified.creator_notes
+    if (fieldKey === 'unified.creator_notes') {
+        char.creatorcomment = newValue;
+        if (!char.data) char.data = {};
+        char.data.creator_notes = newValue;
+        return;
+    }
+    
+    // Handle other root-level fields
+    const keys = fieldKey.split('.');
+    let target = char;
+    
+    for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        if (!target[key]) target[key] = {};
+        target = target[key];
+    }
+    
+    target[keys[keys.length - 1]] = newValue;
+}
+
 function resetModalScrollPositions() {
     requestAnimationFrame(() => {
         const modal = document.getElementById('characterTagManagerModal');
@@ -792,7 +1042,7 @@ function getCharacterCount() {
 
 
 export {
-    debounce, debouncePersist, flushExtSettings, getFreeName, isNullColor, escapeHtml, getCharacterNameById,
+    debounce, debouncePersist, flushExtSettings, getFreeName, isNullColor, escapeHtml, getCharacterNameById, stcm_saveCharacter,
     resetModalScrollPositions, makeModalDraggable, saveModalPosSize, clampModalSize, restoreCharEditModal,
     cleanTagMap, buildTagMap,
     buildCharNameMap, getNotes, saveNotes,
