@@ -1652,22 +1652,23 @@ async function saveCharacterChanges(character, changes) {
         
         console.log(`[STCM Field Editor] Saving ${Object.keys(actualChanges).length} changed fields:`, Object.keys(actualChanges));
         
-        // Create a form data payload similar to how the character edit panel works
+        // Build form data payload that matches what charaFormatData() expects
+        // Start with current character data to preserve existing fields
         const formData = {
             avatar_url: character.avatar,
-            ch_name: character.name,
-            chat: character.chat,
-            create_date: character.create_date,
-            // Copy existing character data as base
-            description: character.description || '',
-            personality: character.personality || '',
-            scenario: character.scenario || '',
-            first_mes: character.first_mes || '',
-            mes_example: character.mes_example || '',
-            creator_notes: character.data?.creator_notes || '',
+            ch_name: character.name || character.data?.name || '',
+            chat: character.chat || '',
+            create_date: character.create_date || '',
+            // Map current character fields to form data format
+            description: character.description || character.data?.description || '',
+            personality: character.personality || character.data?.personality || '',
+            scenario: character.scenario || character.data?.scenario || '',
+            first_mes: character.first_mes || character.data?.first_mes || '',
+            mes_example: character.mes_example || character.data?.mes_example || '',
+            creator_notes: character.data?.creator_notes || character.creatorcomment || '',
             system_prompt: character.data?.system_prompt || '',
             post_history_instructions: character.data?.post_history_instructions || '',
-            tags: Array.isArray(character.tags) ? character.tags.join(',') : '',
+            tags: character.tags || character.data?.tags || [],
             creator: character.data?.creator || '',
             character_version: character.data?.character_version || '',
             depth_prompt_prompt: character.data?.extensions?.depth_prompt?.prompt || '',
@@ -1675,12 +1676,14 @@ async function saveCharacterChanges(character, changes) {
             depth_prompt_role: character.data?.extensions?.depth_prompt?.role || 'system',
             talkativeness: character.talkativeness || character.data?.extensions?.talkativeness || 0.5,
             fav: character.fav || character.data?.extensions?.fav || false,
-            // Handle alternate greetings
+            // Handle alternate greetings - convert to form data format
             alternate_greetings: character.data?.alternate_greetings || character.alternate_greetings || []
         };
 
-        // Apply ONLY the actual changes to the form data
+        // Apply ONLY the actual changes to the form data using the correct form field names
         for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
+            
+            // Map our field keys to the form data keys that charaFormatData expects
             if (fieldKey === 'name') {
                 formData.ch_name = newValue;
             } else if (fieldKey === 'description') {
@@ -1704,40 +1707,64 @@ async function saveCharacterChanges(character, changes) {
             } else if (fieldKey === 'data.extensions.depth_prompt.prompt') {
                 formData.depth_prompt_prompt = newValue;
             } else if (fieldKey === 'alternate_greetings') {
-                // Convert the text format back to array
+                // Convert the text format to the array format that charaFormatData expects
                 if (typeof newValue === 'string') {
                     const messages = newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g);
-                    formData.alternate_greetings = messages.map(mes => ({ mes }));
+                    // charaFormatData expects array of strings, not objects with .mes property
+                    formData.alternate_greetings = messages;
+                } else if (Array.isArray(newValue)) {
+                    // If it's already an array, extract the messages
+                    formData.alternate_greetings = newValue.map(item => 
+                        typeof item === 'object' && item.mes ? item.mes : item
+                    );
                 } else {
-                    formData.alternate_greetings = newValue;
+                    formData.alternate_greetings = [];
                 }
             } else if (fieldKey.startsWith('alternate_greetings[') && fieldKey.includes('.mes')) {
                 // Handle individual alternate greeting updates
                 const match = fieldKey.match(/alternate_greetings\[(\d+)\]\.mes/);
                 if (match) {
                     const index = parseInt(match[1]);
-                    let greetings = [...(formData.alternate_greetings || [])];
                     
-                    // Ensure array is long enough
-                    while (greetings.length <= index) {
-                        greetings.push({ mes: '' });
+                    // Ensure we have an array and it's in the string format charaFormatData expects
+                    if (!Array.isArray(formData.alternate_greetings)) {
+                        formData.alternate_greetings = [];
                     }
                     
-                    // Update the specific greeting
-                    greetings[index] = { mes: newValue };
-                    formData.alternate_greetings = greetings;
+                    // Convert objects with .mes to strings if needed
+                    formData.alternate_greetings = formData.alternate_greetings.map(item => 
+                        typeof item === 'object' && item.mes ? item.mes : item
+                    );
+                    
+                    // Ensure array is long enough
+                    while (formData.alternate_greetings.length <= index) {
+                        formData.alternate_greetings.push('');
+                    }
+                    
+                    // Update the specific greeting (as string, not object)
+                    formData.alternate_greetings[index] = newValue;
                 }
             } else if (fieldKey === 'tags') {
-                formData.tags = Array.isArray(newValue) ? newValue.join(',') : newValue;
+                formData.tags = newValue;
             }
-            // Add more field mappings as needed
+            // Add more field mappings as needed for other data.* fields
         }
+
+        // Convert tags to the format charaFormatData expects
+        if (Array.isArray(formData.tags)) {
+            formData.tags = formData.tags.join(',');
+        }
+
+        // Convert boolean values to strings as expected by charaFormatData
+        formData.fav = String(formData.fav);
 
         // Use SillyTavern's native request headers function
         const getRequestHeaders = ctx?.getRequestHeaders || window?.getRequestHeaders;
         if (!getRequestHeaders) {
             throw new Error('getRequestHeaders function not available');
         }
+
+        console.log('[STCM Field Editor] Sending form data to /edit endpoint:', formData);
 
         const result = await fetch('/api/characters/edit', {
             method: 'POST',
@@ -1758,7 +1785,9 @@ async function saveCharacterChanges(character, changes) {
             throw new Error(errorMessage);
         }
 
-        // Update the local character object with ONLY the actual changes
+        toastr.success(`Successfully saved ${Object.keys(actualChanges).length} field changes!`);
+
+        // Update the local character object with the actual changes
         for (const [fieldKey, newValue] of Object.entries(actualChanges)) {
             setFieldValue(currentCharacter, fieldKey, newValue);
         }
