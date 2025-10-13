@@ -491,13 +491,13 @@ export function createEditSectionForCharacter(char) {
     btnRow.className = 'stcm_char_edit_save_row';
     btnRow.style.cssText = `
         position: sticky;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: var(--SmartThemeBodyColor, #222);
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 12px 16px;
-        margin: 0 -16px -16px -16px;
+        bottom: 0px;
+        left: 0px;
+        right: 0px;
+        background: var(--ac-style-color-background, #171717);
+        border-top: 1px solid var(--ac-style-color-border, #333);
+        padding: 5px 0px;
+        margin: 0px -16px -16px;
         z-index: 100;
         box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
         display: flex;
