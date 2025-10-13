@@ -92,7 +92,15 @@ function spacer() {
 }
 
 // Get field value from character object using dot notation
+// Get field value from character object using dot notation
 function getFieldValue(char, fieldKey) {
+    if (!char) return '';
+    
+    // Handle unified.creator_notes - return whichever has content, prefer data.creator_notes
+    if (fieldKey === 'unified.creator_notes') {
+        return (char.data?.creator_notes || '').trim() || (char.creatorcomment || '').trim() || '';
+    }
+    
     if (fieldKey === 'alternate_greetings') {
         // Handle alternate greetings - check both root level and data.alternate_greetings
         const greetings = char?.data?.alternate_greetings || char?.alternate_greetings || [];
@@ -1641,12 +1649,29 @@ function updateCharacterEditPanel() {
         const inputs = editModal.querySelectorAll('.charEditInput');
         inputs.forEach(input => {
             const fieldPath = input.name;
-            if (fieldPath) {
-                const currentValue = getFieldValue(currentCharacter, fieldPath);
-                if (input.value !== currentValue) {
-                    input.value = currentValue;
-                    // Trigger change event to notify any listeners
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
+            if (!fieldPath) return;
+            
+            // Get the current value from the character object
+            let currentValue = getFieldValue(currentCharacter, fieldPath);
+            
+            // Handle the unified.creator_notes special case
+            // Check if this input is for creator notes by checking data path variations
+            if (fieldPath === 'unified.creator_notes' || 
+                fieldPath === 'data.creator_notes' || 
+                fieldPath === 'creatorcomment') {
+                // Get the unified value (prefer data.creator_notes, fallback to creatorcomment)
+                currentValue = (currentCharacter.data?.creator_notes || '').trim() || 
+                              (currentCharacter.creatorcomment || '').trim() || '';
+            }
+            
+            // Only update if value actually changed
+            if (input.value !== currentValue) {
+                input.value = currentValue;
+                // Trigger change event to notify any listeners
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                if (isDevMode()) {
+                    console.log(`[STCM Field Editor] Updated "${fieldPath}" in edit panel`);
                 }
             }
         });
