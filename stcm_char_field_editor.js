@@ -139,7 +139,6 @@ function getFieldValue(char, fieldKey) {
 }
 
 // Set field value in character object using dot notation
-// Set field value in character object using dot notation
 function setFieldValue(char, fieldKey, newValue) {
     if (fieldKey === 'alternate_greetings') {
         // Handle alternate greetings as array, creating objects with .mes property
@@ -163,67 +162,62 @@ function setFieldValue(char, fieldKey, newValue) {
             if (!char.alternate_greetings) char.alternate_greetings = [];
             
             // Ensure the greeting object exists in both locations
-            if (!char.data.alternate_greetings[index]) {
-                char.data.alternate_greetings[index] = { mes: '' };
+            while (char.data.alternate_greetings.length <= index) {
+                char.data.alternate_greetings.push({ mes: '' });
             }
-            if (!char.alternate_greetings[index]) {
-                char.alternate_greetings[index] = { mes: '' };
+            while (char.alternate_greetings.length <= index) {
+                char.alternate_greetings.push({ mes: '' });
             }
             
-            // If accessing .mes property specifically
-            if (fieldKey.includes('.mes')) {
-                // Ensure it's an object with mes property
-                if (typeof char.data.alternate_greetings[index] === 'string') {
-                    char.data.alternate_greetings[index] = { mes: char.data.alternate_greetings[index] };
-                }
-                if (typeof char.alternate_greetings[index] === 'string') {
-                    char.alternate_greetings[index] = { mes: char.alternate_greetings[index] };
-                }
-                char.data.alternate_greetings[index].mes = newValue;
-                char.alternate_greetings[index].mes = newValue;
-            } else {
-                // Backward compatibility: set the whole greeting
-                if (newValue && typeof newValue === 'string') {
-                    char.data.alternate_greetings[index] = { mes: newValue };
-                    char.alternate_greetings[index] = { mes: newValue };
-                } else {
-                    char.data.alternate_greetings[index] = newValue;
-                    char.alternate_greetings[index] = newValue;
-                }
-            }
+            // Set identical values in both locations
+            char.data.alternate_greetings[index] = { mes: newValue };
+            char.alternate_greetings[index] = { mes: newValue };
             return;
         }
     }
     
-    // Handle root-level fields that should be mirrored in data - FIXED
-    if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
+    // Shared fields between root level and data object (per TavernCard spec)
+    const SHARED_SPEC_FIELDS = ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'];
+    
+    if (SHARED_SPEC_FIELDS.includes(fieldKey)) {
         // Ensure data object exists
         if (!char.data) char.data = {};
         
-        // Set the value in both locations with proper synchronization
+        // Set IDENTICAL values in both locations - this prevents spec mismatches
         char[fieldKey] = newValue;
         char.data[fieldKey] = newValue;
         
-        // Also ensure other spec-related fields are consistent
-        if (!char.spec) {
-            char.spec = char.data.spec || 'chara_card_v2';
-        }
-        if (!char.spec_version) {
-            char.spec_version = char.data.spec_version || '2.0';
-        }
+        // Ensure spec metadata is present and consistent
+        const currentSpec = char.spec || char.data?.spec || 'chara_card_v2';
+        const currentSpecVersion = char.spec_version || char.data?.spec_version || '2.0';
+        
+        char.spec = currentSpec;
+        char.spec_version = currentSpecVersion;
+        char.data.spec = currentSpec;
+        char.data.spec_version = currentSpecVersion;
+        
         return;
     }
     
-    const keys = fieldKey.split('.');
-    const lastKey = keys.pop();
-    let target = char;
-    
-    for (const key of keys) {
-        if (!target[key]) target[key] = {};
-        target = target[key];
+    // Handle nested data fields (like data.creator, data.system_prompt, etc.)
+    if (fieldKey.startsWith('data.')) {
+        if (!char.data) char.data = {};
+        const dataPath = fieldKey.substring(5); // Remove 'data.' prefix
+        const keys = dataPath.split('.');
+        let target = char.data;
+        
+        for (let i = 0; i < keys.length - 1; i++) {
+            const key = keys[i];
+            if (!target[key]) target[key] = {};
+            target = target[key];
+        }
+        
+        target[keys[keys.length - 1]] = newValue;
+        return;
     }
     
-    target[lastKey] = newValue;
+    // Handle other root-level fields
+    char[fieldKey] = newValue;
 }
 
 // Build the system prompt for character field editing
@@ -1628,40 +1622,103 @@ async function saveCharacterChanges(character, changes) {
         
         const payload = { avatar: character.avatar };
         
-        // Build the update payload using the same structure as the character panel
+        // Ensure we have the current character's spec information
+        const currentSpec = character.spec || character.data?.spec || 'chara_card_v2';
+        const currentSpecVersion = character.spec_version || character.data?.spec_version || '2.0';
+        
+        // CRITICAL: Set spec fields FIRST to ensure consistency after deepMerge
+        payload.spec = currentSpec;
+        payload.spec_version = currentSpecVersion;
+        payload.data = {
+            spec: currentSpec,
+            spec_version: currentSpecVersion
+        };
+
+        // Shared fields that must be identical at root and data levels
+        const SHARED_SPEC_FIELDS = ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'];
+        
+        // Build the update payload with explicit synchronization
         for (const [fieldKey, newValue] of Object.entries(changes)) {
-            // Handle root-level fields specially - FIXED
-            if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
-                // Set both root level and in data object with proper synchronization
+            
+            if (SHARED_SPEC_FIELDS.includes(fieldKey)) {
+                // CRITICAL: Set IDENTICAL values to prevent deepMerge conflicts
                 payload[fieldKey] = newValue;
-                if (!payload.data) payload.data = {};
                 payload.data[fieldKey] = newValue;
-                
-                // Ensure spec consistency
-                if (!payload.spec && character.spec) payload.spec = character.spec;
-                if (!payload.spec_version && character.spec_version) payload.spec_version = character.spec_version;
-                if (!payload.data.spec && character.data?.spec) payload.data.spec = character.data.spec;
-                if (!payload.data.spec_version && character.data?.spec_version) payload.data.spec_version = character.data.spec_version;
                 
             } else if (fieldKey === 'alternate_greetings') {
                 // Handle alternate greetings specially
-                const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
-                const greetings = messages.map(mes => ({ mes }));
+                let greetings = [];
+                if (newValue) {
+                    const messages = newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g);
+                    greetings = messages.map(mes => ({ mes }));
+                }
+                
+                // Set in both locations with identical objects
                 payload.alternate_greetings = greetings;
-                if (!payload.data) payload.data = {};
                 payload.data.alternate_greetings = greetings;
-            } else {
-                // Handle nested fields normally
-                const keys = fieldKey.split('.');
-                let ref = payload;
+                
+            } else if (fieldKey.startsWith('alternate_greetings[') && fieldKey.includes('.mes')) {
+                // Handle individual alternate greeting messages
+                const match = fieldKey.match(/alternate_greetings\[(\d+)\]\.mes/);
+                if (match) {
+                    const index = parseInt(match[1]);
+                    
+                    // Ensure alternate_greetings arrays exist with current data
+                    if (!payload.alternate_greetings) {
+                        payload.alternate_greetings = [...(character.alternate_greetings || [])];
+                    }
+                    if (!payload.data.alternate_greetings) {
+                        payload.data.alternate_greetings = [...(character.data?.alternate_greetings || character.alternate_greetings || [])];
+                    }
+                    
+                    // Ensure the specific index exists as an object
+                    while (payload.alternate_greetings.length <= index) {
+                        payload.alternate_greetings.push({ mes: '' });
+                    }
+                    while (payload.data.alternate_greetings.length <= index) {
+                        payload.data.alternate_greetings.push({ mes: '' });
+                    }
+                    
+                    // Set IDENTICAL message objects in both locations
+                    const messageObj = { mes: newValue };
+                    payload.alternate_greetings[index] = messageObj;
+                    payload.data.alternate_greetings[index] = messageObj;
+                }
+                
+            } else if (fieldKey.startsWith('data.')) {
+                // Handle nested data fields (like data.creator, data.system_prompt, etc.)
+                const dataPath = fieldKey.substring(5); // Remove 'data.' prefix
+                const keys = dataPath.split('.');
+                let ref = payload.data;
+                
+                // Navigate to the correct nested location
                 while (keys.length > 1) {
                     const k = keys.shift();
-                    ref[k] = ref[k] || {};
+                    if (!ref[k]) ref[k] = {};
                     ref = ref[k];
                 }
                 ref[keys[0]] = newValue;
+                
+            } else if (fieldKey === 'tags') {
+                // Handle tags field synchronization
+                payload.tags = newValue;
+                payload.data.tags = newValue;
+                
+            } else {
+                // Handle other root-level fields
+                payload[fieldKey] = newValue;
             }
         }
+
+        // CRITICAL: Final synchronization check before sending
+        // Ensure shared fields have identical values (not just equivalent)
+        SHARED_SPEC_FIELDS.forEach(field => {
+            if (payload[field] !== undefined && payload.data[field] !== undefined) {
+                // Make sure they reference the same value
+                const value = payload[field];
+                payload.data[field] = value;
+            }
+        });
 
         // Use SillyTavern's native request headers function
         const getRequestHeaders = ctx?.getRequestHeaders || window?.getRequestHeaders;
@@ -1691,43 +1748,75 @@ async function saveCharacterChanges(character, changes) {
             throw new Error(errorMessage);
         }
 
-        // Update the local character object with new values
+        // Update the local character object with new values using proper synchronization
         for (const [fieldKey, newValue] of Object.entries(changes)) {
             setFieldValue(currentCharacter, fieldKey, newValue);
         }
 
-        // Update json_data field if it exists (for persistence)
+        // Update json_data field if it exists (for persistence) with the same synchronization
         if (currentCharacter.json_data) {
             try {
                 const jsonData = JSON.parse(currentCharacter.json_data);
+                
+                // Ensure spec consistency in json_data
+                jsonData.spec = currentSpec;
+                jsonData.spec_version = currentSpecVersion;
+                if (!jsonData.data) jsonData.data = {};
+                jsonData.data.spec = currentSpec;
+                jsonData.data.spec_version = currentSpecVersion;
+                
                 for (const [fieldKey, newValue] of Object.entries(changes)) {
-                    // Apply the same logic to json_data with proper synchronization
-                    if (['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'].includes(fieldKey)) {
+                    if (SHARED_SPEC_FIELDS.includes(fieldKey)) {
+                        // Synchronize shared fields with identical values
                         jsonData[fieldKey] = newValue;
-                        if (!jsonData.data) jsonData.data = {};
                         jsonData.data[fieldKey] = newValue;
-                        
-                        // Ensure spec consistency in json_data too
-                        if (!jsonData.spec) jsonData.spec = jsonData.data?.spec || 'chara_card_v2';
-                        if (!jsonData.spec_version) jsonData.spec_version = jsonData.data?.spec_version || '2.0';
                         
                     } else if (fieldKey === 'alternate_greetings') {
                         const messages = newValue ? newValue.split('\n\n---\n\n').map(g => g.trim()).filter(g => g) : [];
                         const greetings = messages.map(mes => ({ mes }));
                         jsonData.alternate_greetings = greetings;
-                        if (!jsonData.data) jsonData.data = {};
                         jsonData.data.alternate_greetings = greetings;
-                    } else {
-                        const keys = fieldKey.split('.');
-                        let ref = jsonData;
+                        
+                    } else if (fieldKey.startsWith('alternate_greetings[') && fieldKey.includes('.mes')) {
+                        const match = fieldKey.match(/alternate_greetings\[(\d+)\]\.mes/);
+                        if (match) {
+                            const index = parseInt(match[1]);
+                            
+                            if (!jsonData.alternate_greetings) jsonData.alternate_greetings = [];
+                            if (!jsonData.data.alternate_greetings) jsonData.data.alternate_greetings = [];
+                            
+                            while (jsonData.alternate_greetings.length <= index) {
+                                jsonData.alternate_greetings.push({ mes: '' });
+                            }
+                            while (jsonData.data.alternate_greetings.length <= index) {
+                                jsonData.data.alternate_greetings.push({ mes: '' });
+                            }
+                            
+                            const messageObj = { mes: newValue };
+                            jsonData.alternate_greetings[index] = messageObj;
+                            jsonData.data.alternate_greetings[index] = messageObj;
+                        }
+                        
+                    } else if (fieldKey.startsWith('data.')) {
+                        const dataPath = fieldKey.substring(5);
+                        const keys = dataPath.split('.');
+                        let ref = jsonData.data;
                         while (keys.length > 1) {
                             const k = keys.shift();
                             if (!ref[k]) ref[k] = {};
                             ref = ref[k];
                         }
                         ref[keys[0]] = newValue;
+                        
+                    } else if (fieldKey === 'tags') {
+                        jsonData.tags = newValue;
+                        jsonData.data.tags = newValue;
+                        
+                    } else {
+                        jsonData[fieldKey] = newValue;
                     }
                 }
+                
                 currentCharacter.json_data = JSON.stringify(jsonData);
             } catch (e) {
                 console.warn('[STCM Field Editor] Failed to update json_data field:', e);
