@@ -642,6 +642,7 @@ function openCharEditModal(char) {
 }
 
 // Add this function to inject the button into the native character panel
+// Replace the injectStcmEditButton function:
 function injectStcmEditButton() {
     const avatarControls = document.getElementById('avatar_controls');
     if (!avatarControls) return;
@@ -664,18 +665,22 @@ function injectStcmEditButton() {
         try {
             // Get the context to find the current character
             const context = SillyTavern.getContext();
-            const characterId = context?.characterId;
+            const characterId = context?.characterId; // This is the index, not the avatar
 
-            if (!characterId) {
+            if (characterId === null || characterId === undefined) {
                 toastr.warning('No character is currently selected.');
                 return;
             }
 
-            // Find the character by avatar (which is the characterId)
-            const char = characters.find(c => c.avatar === characterId);
+            // Parse as integer in case it's a string
+            const charIndex = parseInt(characterId);
+            
+            // Get the character by index from the characters array
+            const char = context?.characters?.[charIndex];
 
             if (!char) {
                 toastr.error('Could not find character data.');
+                console.error('[STCM] Character not found at index:', charIndex);
                 return;
             }
 
