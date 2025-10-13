@@ -1378,7 +1378,9 @@ function getProfileStops(profile) {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         return Array.isArray(parsed) ? parsed.filter(s => typeof s === 'string' && s.length) : [];
     } catch { 
+        if (isDevMode()) {
         console.warn('[STCM Field Editor] Could not parse profile stop-strings:', raw); 
+        }
         return []; 
     }
 }
@@ -1528,7 +1530,9 @@ function getModelFromContextByApi(profile) {
 
         return null;
     } catch (e) {
-        console.warn('[STCM Field Editor] getModelFromContextByApi error:', e);
+        if (isDevMode()) {
+            console.warn('[STCM Field Editor] getModelFromContextByApi error:', e);
+        }
         return null;
     }
 }
@@ -1555,9 +1559,13 @@ async function onApplyChanges(responseText) {
         for (const [fieldKey, newValue] of Object.entries(changes)) {
             if (selectedFields.has(fieldKey)) {
                 validChanges[fieldKey] = newValue;
-                console.log(`[STCM Field Editor] Preparing to apply change to "${fieldKey}"`);
+                if (isDevMode()) {
+                    console.log(`[STCM Field Editor] Preparing to apply change to "${fieldKey}"`);
+                }
             } else {
-                console.log(`[STCM Field Editor] Ignoring "${fieldKey}" - not in selected fields`);
+                if (isDevMode()) {
+                    console.log(`[STCM Field Editor] Ignoring "${fieldKey}" - not in selected fields`);
+                }
             }
         }
 
@@ -1632,9 +1640,13 @@ async function saveCharacterChanges(character, changes) {
             if (currentValue !== newValue) {
                 actualChanges[fieldKey] = newValue;
                 hasChanges = true;
-                console.log(`[STCM Field Editor] Field "${fieldKey}" changed`);
+                if (isDevMode()) {
+                    console.log(`[STCM Field Editor] Field "${fieldKey}" changed`);
+                }
             } else {
-                console.log(`[STCM Field Editor] Field "${fieldKey}" unchanged, skipping`);
+                if (isDevMode()) {
+                    console.log(`[STCM Field Editor] Field "${fieldKey}" unchanged, skipping`);
+                }
             }
         }
         
@@ -1643,9 +1655,10 @@ async function saveCharacterChanges(character, changes) {
             toastr.info('No fields were changed - nothing to save');
             return;
         }
-        
-        console.log(`[STCM Field Editor] Saving ${Object.keys(actualChanges).length} changed fields:`, Object.keys(actualChanges));
-        
+        if (isDevMode()) {
+            console.log(`[STCM Field Editor] Saving ${Object.keys(actualChanges).length} changed fields:`, Object.keys(actualChanges));
+        }
+
         // Use the universal save function from utils.js
         await stcm_saveCharacter(character, actualChanges, false);
         
@@ -1678,11 +1691,15 @@ async function saveCharacterChanges(character, changes) {
                 await callSaveandReload();
             }
         } catch (error) {
-            console.warn('[STCM Field Editor] Could not call module reload:', error);
+            if (isDevMode()) {
+                console.warn('[STCM Field Editor] Could not call module reload:', error);
+            }
         }
 
     } catch (error) {
+        if (isDevMode()) {
         console.error('[STCM Field Editor] Save failed:', error);
+        }
         toastr.error(`Failed to save: ${error.message}`);
         throw error;
     }
@@ -1694,5 +1711,7 @@ export function openCharacterFieldEditor(character) {
 }
 
 export function initCharacterFieldEditor() {
+    if (isDevMode()) {
     console.log('[STCM] Character Field Editor initialized');
+    }
 }

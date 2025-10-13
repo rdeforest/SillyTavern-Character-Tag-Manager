@@ -1,5 +1,5 @@
 import { renderCharacterList } from "./stcm_characters.js";
-import { stcm_saveCharacter } from "./utils.js";
+import { stcm_saveCharacter, isDevMode } from "./utils.js";
 
 // ============================================================================
 // stcm_char_panel.js
@@ -452,10 +452,14 @@ export function createEditSectionForCharacter(char) {
                         await callSaveandReload();
                     }
                 } catch (error) {
+                    if (isDevMode()) {
                     console.warn('[STCM] Could not call module reload:', error);
+                    }
                 }
             } catch (e) {
+                if (isDevMode()) {
                 console.warn('[STCM] Save alternate greetings failed:', e);
+                }
                 toastr.error(`Failed to save alternate greetings: ${e.message}`);
             }
         });
@@ -512,11 +516,15 @@ export function createEditSectionForCharacter(char) {
                     await callSaveandReload();
                 }
             } catch (error) {
+                if (isDevMode()) {
                 console.warn('[STCM] Could not call module reload:', error);
+                }
             }
         } catch (e) {
+            if (isDevMode()) {
             console.warn('[STCM] Save character failed:', e);
             toastr.error(`Failed to save updates: ${e.message}`);
+            }
         }
     });
 

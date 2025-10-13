@@ -26,6 +26,7 @@ const defaultSettings = {
     folderNavHeightMode: "auto",
     folderNavMaxHeight: 50,
     blurPrivatePreviews: false,
+    devMode: false,
     // --- Feedback Data (anonymous analytics) ---
     feedbackEnabled: false,          // master opt-in; nothing is sent unless true
     feedbackInstallId: "",           // generated once per install
@@ -36,6 +37,40 @@ const defaultSettings = {
     feedbackSendCharacterCount: false,
     feedbackLastSentISO: ""    // NEW: track last successful send              
 };
+
+/**
+ * Toggle Dev Mode on/off via console
+ * Usage in browser console:
+ *   STCM_setDevMode(true)   // enable
+ *   STCM_setDevMode(false)  // disable
+ *   STCM_setDevMode()       // toggle
+ */
+export function STCM_setDevMode(enabled) {
+    const s = getSettings();
+    
+    // If no argument, toggle current state
+    if (enabled === undefined) {
+        s.devMode = !s.devMode;
+    } else {
+        s.devMode = !!enabled;
+    }
+    
+    debouncePersist();
+    console.log(`[STCM] Dev Mode ${s.devMode ? 'ENABLED' : 'DISABLED'}`);
+    console.log('[STCM] Settings will be saved to disk shortly...');
+    
+    return s.devMode;
+}
+
+/**
+ * Check current Dev Mode state
+ * Usage: STCM_isDevMode()
+ */
+export function STCM_isDevMode() {
+    const s = getSettings();
+    console.log(`[STCM] Dev Mode is currently ${s.devMode ? 'ENABLED' : 'DISABLED'}`);
+    return s.devMode;
+}
 
 const FEEDBACK_DEFAULT_API_URL =
     "https://aicharactercards.com/wp-json/aicc_extension-feedback/v1/submit";
@@ -820,8 +855,9 @@ export async function STCM_feedbackSendNow() {
     console.log("[FEEDBACK] manual send attempted");
 }
 
-if (typeof window !== "undefined") {
+if (typeof window !== 'undefined') {
+    window.STCM_setDevMode = STCM_setDevMode;
+    window.STCM_isDevMode = STCM_isDevMode;
     window.STCM_feedbackClearLastSent = STCM_feedbackClearLastSent;
-    window.STCM_feedbackSendNow = STCM_feedbackSendNow; // optional
+    window.STCM_feedbackSendNow = STCM_feedbackSendNow;
 }
-

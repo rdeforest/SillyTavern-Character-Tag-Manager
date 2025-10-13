@@ -27,6 +27,20 @@ function ensureContext() {
     }
 }
 
+/**
+ * Check if Dev Mode is enabled (for conditional logging)
+ * @returns {boolean}
+ */
+function isDevMode() {
+    try {
+        const { extension_settings } = require('../../../extensions.js');
+        const MODULE_NAME = 'characterTagManager';
+        return extension_settings?.[MODULE_NAME]?.devMode ?? false;
+    } catch {
+        return false;
+    }
+}
+
 let tagFilterBarObserver = null;  // Singleton observer for tag filter bar
 
 function debounce(fn, delay = 200) {
@@ -148,7 +162,9 @@ async function stcm_saveCharacter(character, changes = null, updateUI = true) {
             const avatarFile = new File([avatarBlob], 'avatar.png', { type: 'image/png' });
             formData.append('avatar', avatarFile);
         } catch (avatarError) {
+            if (isDevMode()) {
             console.warn('[STCM] Could not fetch avatar file:', avatarError);
+            }
         }
 
         // Extended character data fields from data object
@@ -558,7 +574,9 @@ function clampModalSize(modalEl, margin = 20) {
             modal.style.top = `${rect.top}px`;
         }
     } catch (e) {
+        if (isDevMode()) {
         console.warn('Failed to restore edit modal position/size');
+        }
     }
 }
 
@@ -754,14 +772,18 @@ function hexToRgba(hex, alpha) {
 const origEmit = eventSource.emit;
 
 eventSource.emit = function(event, ...args) {
+    if (isDevMode()) {
     console.log('[EVENT]', event, ...args);
+    }
 
     if (event === 'chatLoaded') {
         setTimeout(() => {
             try {
                 createSwipeSelector();
             } catch (err) {
+                if (isDevMode()) {
                 console.warn('Swipe selector injection failed:', err);
+                }
             }
         }, 50);
     }
@@ -795,7 +817,9 @@ eventSource.emit = function(event, ...args) {
                     }
                 }
             } catch (err) {
+                if (isDevMode()) {
                 console.warn('Swipe selector update on message_deleted failed:', err);
+                }
             }
         }, 50);
     }
@@ -1050,5 +1074,6 @@ export {
     hashPin, getStoredPinHash, saveStoredPinHash, hexToRgba,
     createSwipeSelector,
     getCharacterCount, getFolderCount, getTagCount,
-    addTagMapBackup, tryAutoBackupTagMapOnLaunch
+    addTagMapBackup, tryAutoBackupTagMapOnLaunch,
+    isDevMode
 };
