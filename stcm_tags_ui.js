@@ -147,8 +147,8 @@ export function renderTagSection() {
     content.innerHTML = '';
     const frag = document.createDocumentFragment();
 
-    // Track tag order for shift-click range selection
-    bulkDeleteTagOrder = tagGroups.map(g => g.tag.id);
+    // Track tag order for shift-click range selection (as strings to match cb.value)
+    bulkDeleteTagOrder = tagGroups.map(g => String(g.tag.id));
 
     // Add select-all header when in bulk delete mode
     if (isBulkDeleteMode && tagGroups.length > 0) {
@@ -221,6 +221,11 @@ export function renderTagSection() {
         // Wire individual checkboxes with shift-click support
         allCheckboxes.forEach(cb => {
             cb.checked = selectedBulkDeleteTags.has(cb.value);
+
+            // Prevent text selection when shift-clicking
+            cb.addEventListener('mousedown', (e) => {
+                if (e.shiftKey) e.preventDefault();
+            });
 
             cb.addEventListener('click', (e) => {
                 const clickedId = cb.value;
