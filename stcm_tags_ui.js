@@ -234,15 +234,24 @@ export function renderTagSection() {
                 if (e.shiftKey && bulkDeleteCursor !== null) {
                     // Shift-click: toggle range from cursor to clicked (exclusive of cursor)
                     const cursorIdx = bulkDeleteTagOrder.indexOf(bulkDeleteCursor);
+                    console.log('Shift-click range:', {
+                        cursorIdx, clickedIdx,
+                        cursor: bulkDeleteCursor,
+                        clicked: clickedId,
+                        orderLength: bulkDeleteTagOrder.length
+                    });
                     if (cursorIdx !== -1 && clickedIdx !== -1 && cursorIdx !== clickedIdx) {
                         const startIdx = Math.min(cursorIdx, clickedIdx);
                         const endIdx = Math.max(cursorIdx, clickedIdx);
+                        const toggled = [];
                         // Toggle everything between cursor and click (exclusive of cursor, inclusive of click)
                         for (let i = startIdx; i <= endIdx; i++) {
                             if (bulkDeleteTagOrder[i] !== bulkDeleteCursor) {
+                                toggled.push({ i, id: bulkDeleteTagOrder[i] });
                                 toggleTag(bulkDeleteTagOrder[i]);
                             }
                         }
+                        console.log('Toggled items:', { startIdx, endIdx, toggled });
                         // Update all checkbox UI
                         allCheckboxes.forEach(c => c.checked = selectedBulkDeleteTags.has(c.value));
                         e.preventDefault(); // Prevent default checkbox toggle since we handled it
