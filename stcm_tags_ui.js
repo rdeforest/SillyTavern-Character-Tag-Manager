@@ -71,6 +71,10 @@ export let isBulkDeleteMode        = false;
 export const selectedBulkDeleteTags = new Set();
 export const selectedTagIds = new Set();     // ← used by characters pane
 
+// For shift-click range selection in bulk delete mode
+let bulkDeleteCursor = null;          // tag ID of last clicked checkbox
+let bulkDeleteTagOrder = [];          // ordered list of tag IDs as rendered
+
 // ---------------------------------------------------------------------------
 // PUBLIC 1: renderTagSection  (was renderCharacterTagData in index.js)
 // ---------------------------------------------------------------------------
@@ -143,18 +147,102 @@ export function renderTagSection() {
     content.innerHTML = '';
     const frag = document.createDocumentFragment();
 
+    // Track tag order for shift-click range selection
+    bulkDeleteTagOrder = tagGroups.map(g => g.tag.id);
+
+    // Add select-all header when in bulk delete mode
+    if (isBulkDeleteMode && tagGroups.length > 0) {
+        const selectAllRow = document.createElement('div');
+        selectAllRow.className = 'tagGroup bulkDeleteSelectAllRow';
+        selectAllRow.style.cssText = 'padding:8px 12px;background:var(--SmartThemeBotMesBlurTintColor,#2a2a2a);border-bottom:1px solid var(--SmartThemeBorderColor,#444);margin-bottom:8px;';
+        selectAllRow.innerHTML = `
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:bold;">
+                <input type="checkbox" id="bulkDeleteSelectAll" style="margin:0;">
+                Select All (${tagGroups.length} tags)
+            </label>
+        `;
+        frag.appendChild(selectAllRow);
+    }
+
     tagGroups.forEach(group => frag.appendChild(renderSingleTag(group)));
     content.appendChild(frag);
 
     // wire bulk-delete & merge checkboxes AFTER list is in the DOM --------
     if (isBulkDeleteMode) {
-        content.querySelectorAll('.bulkDeleteTagCheckbox').forEach(cb => {
+        const allCheckboxes = content.querySelectorAll('.bulkDeleteTagCheckbox');
+        const selectAllCb = content.querySelector('#bulkDeleteSelectAll');
+
+        // Helper to update select-all checkbox state
+        const updateSelectAllState = () => {
+            if (!selectAllCb) return;
+            const allChecked = bulkDeleteTagOrder.every(id => selectedBulkDeleteTags.has(id));
+            const noneChecked = selectedBulkDeleteTags.size === 0;
+            selectAllCb.checked = allChecked;
+            selectAllCb.indeterminate = !allChecked && !noneChecked;
+        };
+
+        // Helper to toggle a tag and update checkbox UI
+        const toggleTag = (tagId) => {
+            if (selectedBulkDeleteTags.has(tagId)) {
+                selectedBulkDeleteTags.delete(tagId);
+            } else {
+                selectedBulkDeleteTags.add(tagId);
+            }
+        };
+
+        // Wire select-all checkbox
+        if (selectAllCb) {
+            selectAllCb.addEventListener('change', () => {
+                if (selectAllCb.checked) {
+                    bulkDeleteTagOrder.forEach(id => selectedBulkDeleteTags.add(id));
+                } else {
+                    selectedBulkDeleteTags.clear();
+                }
+                allCheckboxes.forEach(cb => cb.checked = selectAllCb.checked);
+                bulkDeleteCursor = null;
+            });
+        }
+
+        // Wire individual checkboxes with shift-click support
+        allCheckboxes.forEach(cb => {
             cb.checked = selectedBulkDeleteTags.has(cb.value);
-            cb.addEventListener('change', () => {
-                cb.checked ? selectedBulkDeleteTags.add(cb.value)
-                           : selectedBulkDeleteTags.delete(cb.value);
+
+            cb.addEventListener('click', (e) => {
+                const clickedId = cb.value;
+                const clickedIdx = bulkDeleteTagOrder.indexOf(clickedId);
+
+                if (e.shiftKey && bulkDeleteCursor !== null) {
+                    // Shift-click: toggle range from cursor to clicked (exclusive of cursor)
+                    const cursorIdx = bulkDeleteTagOrder.indexOf(bulkDeleteCursor);
+                    if (cursorIdx !== -1 && clickedIdx !== -1 && cursorIdx !== clickedIdx) {
+                        const startIdx = Math.min(cursorIdx, clickedIdx);
+                        const endIdx = Math.max(cursorIdx, clickedIdx);
+                        // Toggle everything between cursor and click (exclusive of cursor, inclusive of click)
+                        for (let i = startIdx; i <= endIdx; i++) {
+                            if (bulkDeleteTagOrder[i] !== bulkDeleteCursor) {
+                                toggleTag(bulkDeleteTagOrder[i]);
+                            }
+                        }
+                        // Update all checkbox UI
+                        allCheckboxes.forEach(c => c.checked = selectedBulkDeleteTags.has(c.value));
+                        e.preventDefault(); // Prevent default checkbox toggle since we handled it
+                    }
+                } else {
+                    // Regular or Ctrl-click: toggle single item (let default behavior handle it)
+                    if (cb.checked) {
+                        selectedBulkDeleteTags.add(clickedId);
+                    } else {
+                        selectedBulkDeleteTags.delete(clickedId);
+                    }
+                }
+
+                // Update cursor position
+                bulkDeleteCursor = clickedId;
+                updateSelectAllState();
             });
         });
+
+        updateSelectAllState();
     }
     if (isMergeMode) {
         content.querySelectorAll('input[name="mergePrimary"]').forEach(r =>
@@ -742,6 +830,7 @@ export function attachTagSectionListeners(modalRoot) {
     modalRoot.querySelector('#startBulkDeleteTags')
         ?.addEventListener('click', () => { isBulkDeleteMode = true;
             selectedBulkDeleteTags.clear();
+            bulkDeleteCursor = null;
             modalRoot.querySelector('#cancelBulkDeleteTags').style.display = '';
             modalRoot.querySelector('#confirmBulkDeleteTags').style.display = '';
             modalRoot.querySelector('#startBulkDeleteTags').style.display = 'none';
@@ -751,6 +840,7 @@ export function attachTagSectionListeners(modalRoot) {
     modalRoot.querySelector('#cancelBulkDeleteTags')
         ?.addEventListener('click', () => { isBulkDeleteMode = false;
             selectedBulkDeleteTags.clear();
+            bulkDeleteCursor = null;
             modalRoot.querySelector('#cancelBulkDeleteTags').style.display = 'none';
             modalRoot.querySelector('#confirmBulkDeleteTags').style.display = 'none';
             modalRoot.querySelector('#startBulkDeleteTags').style.display = '';
@@ -791,6 +881,7 @@ export function attachTagSectionListeners(modalRoot) {
 
                 isBulkDeleteMode = false;
                 selectedBulkDeleteTags.clear();
+                bulkDeleteCursor = null;
                 modalRoot.querySelector('#cancelBulkDeleteTags').style.display = 'none';
                 modalRoot.querySelector('#confirmBulkDeleteTags').style.display = 'none';
                 modalRoot.querySelector('#startBulkDeleteTags').style.display = '';
