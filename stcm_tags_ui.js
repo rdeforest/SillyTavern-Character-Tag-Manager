@@ -190,6 +190,20 @@ export function renderTagSection() {
             }
         };
 
+        // Helper to update cursor visual indicator
+        const updateCursorVisual = () => {
+            content.querySelectorAll('.tagGroup').forEach(row => {
+                const cb = row.querySelector('.bulkDeleteTagCheckbox');
+                if (cb && cb.value === bulkDeleteCursor) {
+                    row.style.outline = '2px solid var(--SmartThemeQuoteColor, #f0a)';
+                    row.style.outlineOffset = '-2px';
+                } else {
+                    row.style.outline = '';
+                    row.style.outlineOffset = '';
+                }
+            });
+        };
+
         // Wire select-all checkbox
         if (selectAllCb) {
             selectAllCb.addEventListener('change', () => {
@@ -200,6 +214,7 @@ export function renderTagSection() {
                 }
                 allCheckboxes.forEach(cb => cb.checked = selectAllCb.checked);
                 bulkDeleteCursor = null;
+                updateCursorVisual();
             });
         }
 
@@ -228,7 +243,7 @@ export function renderTagSection() {
                         e.preventDefault(); // Prevent default checkbox toggle since we handled it
                     }
                 } else {
-                    // Regular or Ctrl-click: toggle single item (let default behavior handle it)
+                    // Regular click: toggle single item and set cursor
                     if (cb.checked) {
                         selectedBulkDeleteTags.add(clickedId);
                     } else {
@@ -239,10 +254,12 @@ export function renderTagSection() {
                 // Update cursor position
                 bulkDeleteCursor = clickedId;
                 updateSelectAllState();
+                updateCursorVisual();
             });
         });
 
         updateSelectAllState();
+        updateCursorVisual();
     }
     if (isMergeMode) {
         content.querySelectorAll('input[name="mergePrimary"]').forEach(r =>
