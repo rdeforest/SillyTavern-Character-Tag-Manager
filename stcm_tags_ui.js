@@ -246,12 +246,12 @@ export function renderTagSection() {
                         const toggled = [];
                         // Toggle everything between cursor and click (exclusive of cursor, inclusive of click)
                         for (let i = startIdx; i <= endIdx; i++) {
-                            if (bulkDeleteTagOrder[i] !== bulkDeleteCursor) {
+                            if (i !== cursorIdx) {  // Compare indices, not values
                                 toggled.push({ i, id: bulkDeleteTagOrder[i] });
                                 toggleTag(bulkDeleteTagOrder[i]);
                             }
                         }
-                        console.log('Toggled items:', { startIdx, endIdx, toggled });
+                        console.log('Toggled items:', { startIdx, endIdx, cursorIdx, toggled });
                         // Update all checkbox UI
                         allCheckboxes.forEach(c => c.checked = selectedBulkDeleteTags.has(c.value));
                         e.preventDefault(); // Prevent default checkbox toggle since we handled it
