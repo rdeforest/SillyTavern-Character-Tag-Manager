@@ -66,6 +66,8 @@ import { injectStcmSettingsPanel, updateDefaultTagManagerVisibility, updateRecen
 
 import { initCustomGreetingWorkshop } from './stcm_custom_greetings.js';
 
+import { renderUpdatesList, attachUpdatesSectionListeners } from './stcm_updates.js';
+
 
 
 const { eventSource, event_types } = SillyTavern.getContext();
@@ -321,6 +323,29 @@ function openCharacterTagManagerModal() {
                 </div>
             </div>
         </div>
+
+        <div class="accordionSection stcm_accordion_section">
+            <button class="accordionToggle stcm_text_left" data-target="updatesSection">▶ Updates</button>
+            <div id="updatesSection" class="accordionContent">
+                <div style="padding: 1em 0;">
+                    <div style="margin-bottom: 1em; opacity: 0.8;">
+                        Characters with source URLs can be updated from their original source (Chub, GitHub, etc.)
+                    </div>
+                    <div class="stcm_sort_row" style="margin-bottom: 1em;">
+                        <button id="refreshUpdatesListBtn" class="stcm_menu_button interactable">
+                            <i class="fa-solid fa-sync"></i> Refresh List
+                        </button>
+                        <button id="importAllTagsBtn" class="stcm_menu_button interactable">
+                            <i class="fa-solid fa-tags"></i> Import All Tags
+                        </button>
+                        <span id="updatesStatusMsg" style="margin-left: 1em; opacity: 0.7;"></span>
+                    </div>
+                    <div id="updatesListWrapper">
+                        <div class="loading">Click "Refresh List" to scan for characters with source URLs...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     `;
 
@@ -347,8 +372,9 @@ function openCharacterTagManagerModal() {
     document.body.appendChild(editModal);
     document.body.appendChild(minimizedModalTray);
     resetModalScrollPositions();
-    attachTagSectionListeners(overlay); 
+    attachTagSectionListeners(overlay);
     attachFolderSectionListeners(overlay);
+    attachUpdatesSectionListeners();
 
     overlay.style.zIndex = getNextZIndex();
     overlay.addEventListener('mousedown', () => {
@@ -391,7 +417,8 @@ refreshFoldersTree();
         const accordionRenderers = {
             tagsSection: renderTagSection,
             foldersSection: refreshFoldersTree,
-            charactersSection: renderCharacterList
+            charactersSection: renderCharacterList,
+            updatesSection: renderUpdatesList
         };
 
         // 2. Add event listeners to all toggles (after you add the modal to DOM)

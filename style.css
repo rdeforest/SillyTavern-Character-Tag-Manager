@@ -1126,6 +1126,42 @@ justify-content: flex-end;
     display: inline-block;
 }
 
+/* === Updates Table === */
+.stcm_updates_table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+}
+
+.stcm_updates_table thead {
+    background: var(--SmartThemeBotMesBlurTintColor, #2a2a2a);
+}
+
+.stcm_updates_table th {
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: 2px solid var(--SmartThemeBorderColor, #444);
+}
+
+.stcm_updates_table td {
+    padding: 8px 10px;
+    vertical-align: middle;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stcm_updates_table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.stcm_updates_table a {
+    text-decoration: none;
+}
+
+.stcm_updates_table a:hover {
+    text-decoration: underline;
+}
+
 /* === Bulk Edit Controls === */
 .stcm_bulk_edit_controls {
     display: flex;
