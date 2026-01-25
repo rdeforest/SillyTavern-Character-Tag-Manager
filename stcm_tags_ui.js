@@ -145,30 +145,56 @@ export function renderTagSection() {
     });
 
     // ---------------------------------------------------------------------
-    // 4. render
+    // 4. render as table
     // ---------------------------------------------------------------------
     content.innerHTML = '';
-    const frag = document.createDocumentFragment();
 
     // Track tag order for shift-click range selection (as strings to match cb.value)
     bulkDeleteTagOrder = tagGroups.map(g => String(g.tag.id));
 
-    // Add select-all header when in bulk delete mode
-    if (isBulkDeleteMode && tagGroups.length > 0) {
-        const selectAllRow = document.createElement('div');
-        selectAllRow.className = 'tagGroup bulkDeleteSelectAllRow';
-        selectAllRow.style.cssText = 'padding:8px 12px;background:var(--SmartThemeBotMesBlurTintColor,#2a2a2a);border-bottom:1px solid var(--SmartThemeBorderColor,#444);margin-bottom:8px;';
-        selectAllRow.innerHTML = `
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:bold;">
-                <input type="checkbox" id="bulkDeleteSelectAll" style="margin:0;">
-                Select All (${tagGroups.length} tags)
-            </label>
-        `;
-        frag.appendChild(selectAllRow);
-    }
+    // Create table structure
+    const table = document.createElement('table');
+    table.className = 'stcm_tags_table';
 
-    tagGroups.forEach(group => frag.appendChild(renderSingleTag(group)));
-    content.appendChild(frag);
+    // Table header
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr>
+            <th class="stcm_th_checkbox">
+                <input type="checkbox" id="bulkDeleteSelectAll" title="Select/Deselect All">
+            </th>
+            <th class="stcm_th_name">Tag Name</th>
+            <th class="stcm_th_type">Tag Type</th>
+            <th class="stcm_th_view" colspan="2">View</th>
+            <th class="stcm_th_action">Action</th>
+        </tr>
+    `;
+    table.appendChild(thead);
+
+    // Table body
+    const tbody = document.createElement('tbody');
+    tagGroups.forEach(group => {
+        const row = renderSingleTag(group);
+        tbody.appendChild(row);
+
+        // Add notes row (hidden by default, spans all columns)
+        if (row._noteWrap) {
+            const notesRow = document.createElement('tr');
+            notesRow.className = 'stcm_notes_row';
+            notesRow.style.display = 'none';
+            const notesCell = document.createElement('td');
+            notesCell.colSpan = 6;
+            notesCell.appendChild(row._noteWrap);
+            row._noteWrap.style.display = 'flex'; // Always flex when row is shown
+            notesRow.appendChild(notesCell);
+            tbody.appendChild(notesRow);
+            // Update note button to toggle the row instead
+            row._notesRow = notesRow;
+        }
+    });
+    table.appendChild(tbody);
+
+    content.appendChild(table);
 
     // wire bulk-delete & merge checkboxes AFTER list is in the DOM --------
     // Checkboxes are always visible now for bulk edit functionality
@@ -300,14 +326,12 @@ export function renderTagSection() {
 }
 
 // ---------------------------------------------------------------------------
-// helper: render one <div class="tagGroup">
+// helper: render one table row for a tag
 // ---------------------------------------------------------------------------
 function renderSingleTag({ tag, charIds }) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'tagGroup';
-
-    const header = document.createElement('div');
-    header.className = 'tagGroupHeader';
+    const row = document.createElement('tr');
+    row.className = 'tagGroup';
+    row.dataset.tagId = tag.id;
 
     // prettier color defaults
     const rawBg = String(tag.color || '').trim();
@@ -315,113 +339,125 @@ function renderSingleTag({ tag, charIds }) {
     const bg = (rawBg && rawBg !== '#') ? rawBg : '#333';
     const fg = (rawFg && rawFg !== '#') ? rawFg : '#fff';
 
-    header.innerHTML = `
+    // ─────────────────────────────────────────────────────────────────────
+    // Cell 1: Checkbox
+    // ─────────────────────────────────────────────────────────────────────
+    const checkboxCell = document.createElement('td');
+    checkboxCell.className = 'stcm_td_checkbox';
+    checkboxCell.innerHTML = `<input type="checkbox" class="bulkDeleteTagCheckbox" value="${tag.id}">`;
+    row.appendChild(checkboxCell);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Cell 2: Tag Name (with edit icon, color swatch, count)
+    // ─────────────────────────────────────────────────────────────────────
+    const nameCell = document.createElement('td');
+    nameCell.className = 'stcm_td_name';
+    nameCell.innerHTML = `
         <span class="tagNameEditable" data-id="${tag.id}">
-            <input type="checkbox" class="bulkDeleteTagCheckbox" value="${tag.id}" style="margin-right:7px;">
             <i class="fa-solid fa-pen editTagIcon" style="cursor:pointer;margin-right:6px;" title="Edit name"></i>
             <strong class="tagNameText stcm-color-swatch"
                     style="background:${bg};color:${fg};padding:2px 6px;border-radius:4px;cursor:pointer;"
                     title="Click to edit colors">
                 ${escapeHtml(tag.name)} <i class="fa-solid fa-palette" style="margin-left:6px;"></i>
             </strong>
+            <span class="tagCharCount">(${charIds.length})</span>
         </span>
-        <span class="tagCharCount">(${charIds.length})</span>
         ${isMergeMode ? `
            <div class="stcm_merge_controls">
                <label><input type="radio" name="mergePrimary" value="${tag.id}"> Primary</label>
                <label><input type="checkbox" class="mergeCheckbox" value="${tag.id}"> Merge</label>
            </div>` : ''}
     `;
+    row.appendChild(nameCell);
 
     // ─────────────────────────────────────────────────────────────────────
-    // Tag Type / Folder-Type row
+    // Cell 3: Tag Type dropdown
     // ─────────────────────────────────────────────────────────────────────
-
-    // Build dropdown using your own builder function (to keep logic DRY)
+    const typeCell = document.createElement('td');
+    typeCell.className = 'stcm_td_type';
     const folderDropdownWrapper = buildFolderTypeDropdown(tag);
-
-    const folderWrapper = document.createElement('div');
-    folderWrapper.className = 'stcm_folder_type_row';
-    folderWrapper.style.display = 'flex';
-    folderWrapper.style.alignItems = 'center';
-    folderWrapper.style.gap = '0.5em';
-    folderWrapper.style.marginLeft = '20px';
-
-    // Label with icon
-    const folderLabel = document.createElement('span');
-    folderLabel.innerHTML = `<i class="fa-solid fa-folder" style="margin-right: 4px;"></i>Tag Type:`;
-    folderLabel.style.fontWeight = 'bold';
-    folderLabel.style.whiteSpace = 'nowrap';
-    folderLabel.title = "Choose how this tag behaves as a folder";
-
-    // Append label and dropdown to wrapper
-    folderWrapper.appendChild(folderLabel);
-    folderWrapper.appendChild(folderDropdownWrapper);
+    typeCell.appendChild(folderDropdownWrapper);
 
     // Convert to Real Folder button
     const convertBtn = document.createElement('button');
     convertBtn.className = 'stcm_menu_button tiny interactable';
-    convertBtn.textContent = 'Convert to Real Folder';
-    convertBtn.title = 'Create a real folder with this tag’s settings';
+    convertBtn.innerHTML = '<i class="fa-solid fa-folder-plus" title="Convert to Real Folder"></i>';
+    convertBtn.title = 'Convert to Real Folder';
     convertBtn.style.marginLeft = '6px';
     convertBtn.addEventListener('click', () => {
-        convertTagToRealFolder(tag); 
+        convertTagToRealFolder(tag);
     });
-    folderWrapper.appendChild(convertBtn);
+    typeCell.appendChild(convertBtn);
+    row.appendChild(typeCell);
 
-    header.appendChild(folderWrapper);
-
-    // ---------------------------------------------------------------------
-    // action buttons: Characters / Notes / Delete
-    // ---------------------------------------------------------------------
-    const actionBar = document.createElement('div');
-    actionBar.className = 'tagActionButtons';
-
-    // Characters
+    // ─────────────────────────────────────────────────────────────────────
+    // Cell 4: Characters (View column)
+    // ─────────────────────────────────────────────────────────────────────
+    const charCell = document.createElement('td');
+    charCell.className = 'stcm_td_view';
     const charBtn = document.createElement('button');
-    charBtn.textContent = 'Characters';
-    charBtn.className = 'stcm_menu_button stcm_view_btn interactable';
-    charBtn.onclick = () => toggleCharacterList(wrapper, { tag, charIds });
-    actionBar.appendChild(charBtn);
+    charBtn.className = 'stcm_menu_button stcm_view_btn stcm_icon_btn interactable';
+    charBtn.innerHTML = '<i class="fa-solid fa-users"></i>';
+    charBtn.title = `View Characters (${charIds.length})`;
+    charBtn.onclick = () => toggleCharacterList(row, { tag, charIds });
+    charCell.appendChild(charBtn);
+    row.appendChild(charCell);
 
-    // Notes
+    // ─────────────────────────────────────────────────────────────────────
+    // Cell 5: Notes (View column)
+    // ─────────────────────────────────────────────────────────────────────
+    const noteCell = document.createElement('td');
+    noteCell.className = 'stcm_td_view';
     const noteBtn = document.createElement('button');
-    noteBtn.textContent = 'Notes';
-    noteBtn.className = 'stcm_menu_button charNotesToggle small interactable';
+    noteBtn.className = 'stcm_menu_button charNotesToggle stcm_icon_btn interactable';
+    noteBtn.innerHTML = '<i class="fa-solid fa-note-sticky"></i>';
+    noteBtn.title = 'View Notes';
 
     const noteWrap = buildNotesWrapper(tag.id);
     noteBtn.onclick = () => {
-        const open = noteWrap.style.display === 'flex';
-        noteWrap.style.display = open ? 'none' : 'flex';
-        noteBtn.textContent  = open ? 'Notes' : 'Close Notes';
-        noteBtn.style.background = open ? '' : '#8e6529';
+        // Toggle the notes row (will be set up after row is added to tbody)
+        if (row._notesRow) {
+            const open = row._notesRow.style.display !== 'none';
+            row._notesRow.style.display = open ? 'none' : 'table-row';
+            noteBtn.style.background = open ? '' : '#8e6529';
+        }
     };
-    actionBar.appendChild(noteBtn);
+    noteCell.appendChild(noteBtn);
+    row.appendChild(noteCell);
 
-    // Delete
+    // ─────────────────────────────────────────────────────────────────────
+    // Cell 6: Delete (Action column)
+    // ─────────────────────────────────────────────────────────────────────
+    const actionCell = document.createElement('td');
+    actionCell.className = 'stcm_td_action';
     const delBtn = document.createElement('button');
-    delBtn.textContent = 'Delete';
-    delBtn.className = 'stcm_menu_button interactable red';
+    delBtn.className = 'stcm_menu_button stcm_icon_btn interactable red';
+    delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+    delBtn.title = 'Delete Tag';
     delBtn.onclick = () => confirmDeleteTag(tag);
-    actionBar.appendChild(delBtn);
+    actionCell.appendChild(delBtn);
+    row.appendChild(actionCell);
 
-    header.appendChild(actionBar);
-    wrapper.appendChild(header);
-    wrapper.appendChild(noteWrap);
+    // ─────────────────────────────────────────────────────────────────────
+    // Notes wrapper row (spans all columns, hidden by default)
+    // ─────────────────────────────────────────────────────────────────────
+    // We need to handle this differently for tables - append after the row
+    // Store reference on the row for later insertion
+    row._noteWrap = noteWrap;
 
     // ---------------------------------------------------------------------
     // bind listeners that need actual elements
     // ---------------------------------------------------------------------
     // edit name
-    header.querySelectorAll('.editTagIcon').forEach(icon => {
+    nameCell.querySelectorAll('.editTagIcon').forEach(icon => {
         icon.addEventListener('click', () => startInlineRename(icon, tag.id));
     });
     // color picker
-    header.querySelector('.stcm-color-swatch')?.addEventListener('click', () =>
+    nameCell.querySelector('.stcm-color-swatch')?.addEventListener('click', () =>
         openColorEditModal(tag)
     );
 
-    return wrapper;
+    return row;
 }
 
 // ---------------------------------------------------------------------------
