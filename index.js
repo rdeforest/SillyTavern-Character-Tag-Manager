@@ -78,6 +78,43 @@ function closeCharacterTagManagerModal() {
     saveModalPosSize(modalContent);
     resetModalScrollPositions();
     overlay.remove();
+
+    // Update icon state
+    const icon = document.querySelector('#characterTagManagerButton .drawer-icon');
+    if (icon) {
+        icon.classList.remove('openIcon');
+        icon.classList.add('closedIcon');
+    }
+}
+
+/**
+ * Close all other open SillyTavern drawers
+ */
+function closeOtherDrawers() {
+    // Find all open drawer icons and click them to close
+    document.querySelectorAll('.drawer-icon.openIcon').forEach(icon => {
+        // Don't close our own
+        if (icon.closest('#characterTagManagerButton')) return;
+        icon.click();
+    });
+}
+
+/**
+ * Set up listeners to close our modal when other drawers are opened
+ */
+function setupDrawerIntegration() {
+    // Listen for clicks on other drawer toggles
+    document.addEventListener('click', (e) => {
+        const drawerIcon = e.target.closest('.drawer-icon');
+        if (!drawerIcon) return;
+
+        // If it's not our drawer and our modal is open, close it
+        if (!drawerIcon.closest('#characterTagManagerButton')) {
+            if (document.getElementById('characterTagManagerModal')) {
+                closeCharacterTagManagerModal();
+            }
+        }
+    }, true); // Use capture to run before other handlers
 }
 
 function openCharacterTagManagerModal() {
@@ -85,6 +122,16 @@ function openCharacterTagManagerModal() {
     if (document.getElementById('characterTagManagerModal')) {
         closeCharacterTagManagerModal();
         return;
+    }
+
+    // Close other open drawers first
+    closeOtherDrawers();
+
+    // Update our icon state to show as open
+    const icon = document.querySelector('#characterTagManagerButton .drawer-icon');
+    if (icon) {
+        icon.classList.remove('closedIcon');
+        icon.classList.add('openIcon');
     }
 
     const overlay = document.createElement('div');
@@ -998,6 +1045,7 @@ eventSource.on(event_types.APP_READY, async () => {
     STCM.sidebarFolders = await stcmFolders.loadFolders(); // load and save to your variable!
     tryAutoBackupTagMapOnLaunch();
     addCharacterTagManagerIcon();         // Top UI bar
+    setupDrawerIntegration();             // Integrate with ST drawer system
     injectTagManagerControlButton();      // Tag filter bar
     observeTagViewInjection();    // Tag view list
     injectSidebarFolders(STCM.sidebarFolders, characters);  // <--- use sidebarFolders!
