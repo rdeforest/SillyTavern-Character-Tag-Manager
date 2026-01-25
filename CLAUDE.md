@@ -66,22 +66,22 @@ context.tags;           // Tag definitions
 This is a fork for sending PRs upstream:
 
 ```bash
-# Sync with upstream before starting work
+:# Sync with upstream before starting work
 git fetch upstream
 git checkout main
 git merge upstream/main
 
-# Create feature branch
+:# Create feature branch
 git checkout -b feature/my-improvement
 
-# Make changes, test in SillyTavern, commit
+:# Make changes, test in SillyTavern, commit
 git add .
 git commit -m "Description of change"
 
-# Push to fork
+:# Push to fork
 git push origin feature/my-improvement
 
-# Create PR to upstream via GitHub
+:# Create PR to upstream via GitHub
 ```
 
 ## Testing
