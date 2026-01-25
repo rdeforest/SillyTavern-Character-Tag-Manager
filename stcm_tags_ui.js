@@ -75,6 +75,9 @@ export const selectedTagIds = new Set();     // ← used by characters pane
 let bulkDeleteCursor = null;          // tag ID of last clicked checkbox
 let bulkDeleteTagOrder = [];          // ordered list of tag IDs as rendered
 
+// Bulk edit mode: 'any' or 'all' for matching characters
+let bulkEditMatchMode = 'any';
+
 // ---------------------------------------------------------------------------
 // PUBLIC 1: renderTagSection  (was renderCharacterTagData in index.js)
 // ---------------------------------------------------------------------------
@@ -168,7 +171,8 @@ export function renderTagSection() {
     content.appendChild(frag);
 
     // wire bulk-delete & merge checkboxes AFTER list is in the DOM --------
-    if (isBulkDeleteMode) {
+    // Checkboxes are always visible now for bulk edit functionality
+    {
         const allCheckboxes = content.querySelectorAll('.bulkDeleteTagCheckbox');
         const selectAllCb = content.querySelector('#bulkDeleteSelectAll');
 
@@ -204,7 +208,7 @@ export function renderTagSection() {
             });
         };
 
-        // Wire select-all checkbox
+        // Wire select-all checkbox (only present in bulk delete mode)
         if (selectAllCb) {
             selectAllCb.addEventListener('change', () => {
                 if (selectAllCb.checked) {
@@ -287,6 +291,9 @@ export function renderTagSection() {
         );
     }
 
+    // Populate bulk edit dropdowns
+    populateBulkEditDropdowns();
+
     accountStorage.setItem('SelectedNavTab', 'rm_button_characters');
 }
 
@@ -308,10 +315,8 @@ function renderSingleTag({ tag, charIds }) {
 
     header.innerHTML = `
         <span class="tagNameEditable" data-id="${tag.id}">
-            ${isBulkDeleteMode
-                ? `<input type="checkbox" class="bulkDeleteTagCheckbox" value="${tag.id}" style="margin-right:7px;">`
-                : `<i class="fa-solid fa-pen editTagIcon" style="cursor:pointer;margin-right:6px;" title="Edit name"></i>`
-            }
+            <input type="checkbox" class="bulkDeleteTagCheckbox" value="${tag.id}" style="margin-right:7px;">
+            <i class="fa-solid fa-pen editTagIcon" style="cursor:pointer;margin-right:6px;" title="Edit name"></i>
             <strong class="tagNameText stcm-color-swatch"
                     style="background:${bg};color:${fg};padding:2px 6px;border-radius:4px;cursor:pointer;"
                     title="Click to edit colors">
@@ -817,6 +822,229 @@ function confirmDeleteTag(tag) {
 
 
 // ---------------------------------------------------------------------------
+// Bulk edit helper functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Get all character IDs that match the currently selected tags
+ * based on the bulkEditMatchMode ('any' or 'all')
+ */
+function getCharactersMatchingSelectedTags() {
+    if (selectedBulkDeleteTags.size === 0) return [];
+
+    const selectedTagIds = [...selectedBulkDeleteTags];
+    const allCharIds = Object.keys(tag_map);
+
+    return allCharIds.filter(charId => {
+        const charTags = tag_map[charId] || [];
+        if (bulkEditMatchMode === 'all') {
+            // Character must have ALL selected tags
+            return selectedTagIds.every(tid => charTags.includes(tid));
+        } else {
+            // Character must have ANY selected tag
+            return selectedTagIds.some(tid => charTags.includes(tid));
+        }
+    });
+}
+
+/**
+ * Add a tag to all characters matching the selected tags
+ */
+async function bulkAddTagToMatchingCharacters(tagId) {
+    const matchingChars = getCharactersMatchingSelectedTags();
+    if (matchingChars.length === 0) {
+        toastr.warning('No characters match the selected tags.', 'Bulk Edit');
+        return;
+    }
+
+    const tag = tags.find(t => t.id === tagId);
+    const tagName = tag?.name || 'Unknown';
+
+    let addedCount = 0;
+    matchingChars.forEach(charId => {
+        if (!tag_map[charId]) tag_map[charId] = [];
+        if (!tag_map[charId].includes(tagId)) {
+            tag_map[charId].push(tagId);
+            addedCount++;
+        }
+    });
+
+    await callSaveandReload();
+    toastr.success(`Added "${tagName}" to ${addedCount} character(s).`, 'Bulk Edit');
+    renderTagSection();
+    renderCharacterList();
+}
+
+/**
+ * Remove a tag from all characters matching the selected tags
+ */
+async function bulkRemoveTagFromMatchingCharacters(tagId) {
+    const matchingChars = getCharactersMatchingSelectedTags();
+    if (matchingChars.length === 0) {
+        toastr.warning('No characters match the selected tags.', 'Bulk Edit');
+        return;
+    }
+
+    const tag = tags.find(t => t.id === tagId);
+    const tagName = tag?.name || 'Unknown';
+
+    let removedCount = 0;
+    matchingChars.forEach(charId => {
+        if (!tag_map[charId]) return;
+        const idx = tag_map[charId].indexOf(tagId);
+        if (idx !== -1) {
+            tag_map[charId].splice(idx, 1);
+            removedCount++;
+        }
+    });
+
+    await callSaveandReload();
+    toastr.success(`Removed "${tagName}" from ${removedCount} character(s).`, 'Bulk Edit');
+    renderTagSection();
+    renderCharacterList();
+}
+
+/**
+ * Handle creating a new tag and adding it to matching characters
+ */
+async function handleNewTagInput() {
+    const addSelect = document.getElementById('bulkAddTagSelect');
+    if (!addSelect) return;
+
+    // Replace dropdown with input field
+    const wrapper = addSelect.parentElement;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'menu_input';
+    input.placeholder = 'New tag name...';
+    input.style.width = '150px';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'stcm_menu_button small interactable';
+    cancelBtn.textContent = '✕';
+    cancelBtn.title = 'Cancel';
+    cancelBtn.style.marginLeft = '4px';
+
+    const container = document.createElement('span');
+    container.className = 'stcm_new_tag_input_wrapper';
+    container.appendChild(input);
+    container.appendChild(cancelBtn);
+
+    wrapper.replaceChild(container, addSelect);
+    input.focus();
+
+    const cleanup = () => {
+        wrapper.replaceChild(addSelect, container);
+        addSelect.value = '';
+        populateBulkEditDropdowns();
+    };
+
+    cancelBtn.addEventListener('click', cleanup);
+
+    input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Escape') {
+            cleanup();
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const newName = input.value.trim();
+            if (!newName) {
+                cleanup();
+                return;
+            }
+
+            // Check if tag already exists
+            const existing = tags.find(t => t.name.toLowerCase() === newName.toLowerCase());
+            if (existing) {
+                toastr.warning(`Tag "${newName}" already exists.`, 'Bulk Edit');
+                cleanup();
+                return;
+            }
+
+            // Create the new tag
+            const styles = getComputedStyle(document.body);
+            const defaultBg = styles.getPropertyValue('--SmartThemeShadowColor')?.trim() || '#cccccc';
+            const defaultFg = styles.getPropertyValue('--SmartThemeBodyColor')?.trim() || '#000000';
+
+            const newTag = {
+                id: uuidv4(),
+                name: newName,
+                color: defaultBg,
+                color2: defaultFg,
+                folder_type: 'NONE',
+            };
+            tags.push(newTag);
+
+            // Add to matching characters
+            const matchingChars = getCharactersMatchingSelectedTags();
+            if (matchingChars.length > 0) {
+                matchingChars.forEach(charId => {
+                    if (!tag_map[charId]) tag_map[charId] = [];
+                    if (!tag_map[charId].includes(newTag.id)) {
+                        tag_map[charId].push(newTag.id);
+                    }
+                });
+                toastr.success(`Created "${newName}" and added to ${matchingChars.length} character(s).`, 'Bulk Edit');
+            } else {
+                toastr.success(`Created tag "${newName}".`, 'Bulk Edit');
+            }
+
+            await callSaveandReload();
+            cleanup();
+            renderTagSection();
+            renderCharacterList();
+        }
+    });
+
+    input.addEventListener('blur', (e) => {
+        // Only cleanup if we're not clicking the cancel button
+        if (e.relatedTarget !== cancelBtn) {
+            // Delay to allow enter key to process
+            setTimeout(() => {
+                if (document.contains(container)) {
+                    cleanup();
+                }
+            }, 150);
+        }
+    });
+}
+
+/**
+ * Populate the bulk edit Add and Remove dropdowns with all existing tags
+ */
+export function populateBulkEditDropdowns() {
+    const addSelect = document.getElementById('bulkAddTagSelect');
+    const removeSelect = document.getElementById('bulkRemoveTagSelect');
+
+    if (!addSelect || !removeSelect) return;
+
+    // Build sorted tag list
+    const sortedTags = [...tags].sort((a, b) => a.name.localeCompare(b.name));
+
+    // Populate Add dropdown
+    addSelect.innerHTML = `
+        <option value="">+ Add tag...</option>
+        <option value="__new__">Create new tag...</option>
+    `;
+    sortedTags.forEach(tag => {
+        const opt = document.createElement('option');
+        opt.value = tag.id;
+        opt.textContent = tag.name;
+        addSelect.appendChild(opt);
+    });
+
+    // Populate Remove dropdown
+    removeSelect.innerHTML = `<option value="">- Remove tag...</option>`;
+    sortedTags.forEach(tag => {
+        const opt = document.createElement('option');
+        opt.value = tag.id;
+        opt.textContent = tag.name;
+        removeSelect.appendChild(opt);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // PUBLIC 2: attachTagSectionListeners  (one-time, after modal DOM is present)
 // ---------------------------------------------------------------------------
 export function attachTagSectionListeners(modalRoot) {
@@ -829,6 +1057,54 @@ export function attachTagSectionListeners(modalRoot) {
     // create-tag button
     modalRoot.querySelector('#createNewTagBtn')
         ?.addEventListener('click', promptCreateTag);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Bulk edit controls: All/Any radio, Add dropdown, Remove dropdown
+    // ─────────────────────────────────────────────────────────────────────
+
+    // All/Any radio buttons
+    modalRoot.querySelectorAll('input[name="bulkEditMatch"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            bulkEditMatchMode = radio.value;
+        });
+    });
+
+    // Add tag dropdown
+    const addSelect = modalRoot.querySelector('#bulkAddTagSelect');
+    addSelect?.addEventListener('change', async () => {
+        const val = addSelect.value;
+        if (!val) return;
+
+        if (val === '__new__') {
+            handleNewTagInput();
+            return;
+        }
+
+        if (selectedBulkDeleteTags.size === 0) {
+            toastr.warning('Please select at least one tag to match characters.', 'Bulk Edit');
+            addSelect.value = '';
+            return;
+        }
+
+        await bulkAddTagToMatchingCharacters(val);
+        addSelect.value = '';
+    });
+
+    // Remove tag dropdown
+    const removeSelect = modalRoot.querySelector('#bulkRemoveTagSelect');
+    removeSelect?.addEventListener('change', async () => {
+        const val = removeSelect.value;
+        if (!val) return;
+
+        if (selectedBulkDeleteTags.size === 0) {
+            toastr.warning('Please select at least one tag to match characters.', 'Bulk Edit');
+            removeSelect.value = '';
+            return;
+        }
+
+        await bulkRemoveTagFromMatchingCharacters(val);
+        removeSelect.value = '';
+    });
 
     // merge / bulk-delete buttons -----------------------------
 

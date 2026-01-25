@@ -38,7 +38,8 @@ import {
     renderTagSection,
     attachTagSectionListeners,
     populateAssignTagSelect,
-    selectedTagIds
+    selectedTagIds,
+    populateBulkEditDropdowns,
   } from './stcm_tags_ui.js';
 
 import {
@@ -103,6 +104,24 @@ function openCharacterTagManagerModal() {
                 </div>
                 <div style="margin-top: -5px;">
                                     <span class="smallInstructions">Search by tag, or add "C:" before your search to search by character name. Use , (comma) to seperate OR lists.</span>
+                </div>
+                <div class="stcm_bulk_edit_controls">
+                    <span style="font-weight:bold;margin-right:8px;">Bulk Edit:</span>
+                    <div class="stcm_bulk_edit_match">
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="radio" name="bulkEditMatch" value="any" checked> Any
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;">
+                            <input type="radio" name="bulkEditMatch" value="all"> All
+                        </label>
+                    </div>
+                    <select id="bulkAddTagSelect" class="stcm_menu_button interactable">
+                        <option value="">+ Add tag...</option>
+                        <option value="__new__">Create new tag...</option>
+                    </select>
+                    <select id="bulkRemoveTagSelect" class="stcm_menu_button interactable">
+                        <option value="">- Remove tag...</option>
+                    </select>
                 </div>
                 <div class="stcm_align-right stcm_tag_button_holder">
                                 <button id="createNewTagBtn" class="stcm_menu_button stcm_margin_left interactable" tabindex="0">
