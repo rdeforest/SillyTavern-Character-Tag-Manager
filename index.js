@@ -70,8 +70,22 @@ import { initCustomGreetingWorkshop } from './stcm_custom_greetings.js';
 
 const { eventSource, event_types } = SillyTavern.getContext();
 
+function closeCharacterTagManagerModal() {
+    const overlay = document.getElementById('characterTagManagerModal');
+    if (!overlay) return;
+
+    const modalContent = overlay.querySelector('.modalContent');
+    saveModalPosSize(modalContent);
+    resetModalScrollPositions();
+    overlay.remove();
+}
+
 function openCharacterTagManagerModal() {
-    if (document.getElementById('characterTagManagerModal')) return;
+    // Toggle behavior: if modal exists, close it
+    if (document.getElementById('characterTagManagerModal')) {
+        closeCharacterTagManagerModal();
+        return;
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'characterTagManagerModal';
@@ -319,9 +333,7 @@ refreshFoldersTree();
 
     function escToCloseHandler(e) {
         if (e.key === "Escape") {
-            const modalContentEsc = overlay.querySelector('.modalContent');
-            saveModalPosSize(modalContentEsc);
-            overlay.remove();
+            closeCharacterTagManagerModal();
             document.removeEventListener('keydown', escToCloseHandler);
         }
     }
@@ -380,12 +392,8 @@ refreshFoldersTree();
 
 
     document.getElementById('closeCharacterTagManagerModal').addEventListener('click', () => {
-        const modalContentEsc = overlay.querySelector('.modalContent');
-        saveModalPosSize(modalContentEsc);
-        resetModalScrollPositions();
-        overlay.remove();
+        closeCharacterTagManagerModal();
         document.removeEventListener('keydown', escToCloseHandler);
-
     });
 
 
