@@ -219,6 +219,7 @@ export function renderTagSection() {
                 allCheckboxes.forEach(cb => cb.checked = selectAllCb.checked);
                 bulkDeleteCursor = null;
                 updateCursorVisual();
+                populateBulkEditDropdowns(); // Update Remove dropdown for new selection
             });
         }
 
@@ -273,6 +274,7 @@ export function renderTagSection() {
                 bulkDeleteCursor = clickedId;
                 updateSelectAllState();
                 updateCursorVisual();
+                populateBulkEditDropdowns(); // Update Remove dropdown for new selection
             });
         });
 
@@ -1011,7 +1013,9 @@ async function handleNewTagInput() {
 }
 
 /**
- * Populate the bulk edit Add and Remove dropdowns with all existing tags
+ * Populate the bulk edit Add and Remove dropdowns
+ * - Add dropdown: all existing tags
+ * - Remove dropdown: only tags present on characters matching selected tags
  */
 export function populateBulkEditDropdowns() {
     const addSelect = document.getElementById('bulkAddTagSelect');
@@ -1022,7 +1026,7 @@ export function populateBulkEditDropdowns() {
     // Build sorted tag list
     const sortedTags = [...tags].sort((a, b) => a.name.localeCompare(b.name));
 
-    // Populate Add dropdown
+    // Populate Add dropdown with all tags
     addSelect.innerHTML = `
         <option value="">+ Add tag...</option>
         <option value="__new__">Create new tag...</option>
@@ -1034,14 +1038,33 @@ export function populateBulkEditDropdowns() {
         addSelect.appendChild(opt);
     });
 
-    // Populate Remove dropdown
-    removeSelect.innerHTML = `<option value="">- Remove tag...</option>`;
-    sortedTags.forEach(tag => {
-        const opt = document.createElement('option');
-        opt.value = tag.id;
-        opt.textContent = tag.name;
-        removeSelect.appendChild(opt);
+    // Populate Remove dropdown with only tags on matching characters
+    const matchingChars = getCharactersMatchingSelectedTags();
+
+    // Collect all tag IDs present on matching characters
+    const tagsOnMatchingChars = new Set();
+    matchingChars.forEach(charId => {
+        const charTags = tag_map[charId] || [];
+        charTags.forEach(tid => tagsOnMatchingChars.add(tid));
     });
+
+    // Filter to only tags that exist on matching characters
+    const removableTags = sortedTags.filter(tag => tagsOnMatchingChars.has(tag.id));
+
+    removeSelect.innerHTML = `<option value="">- Remove tag...</option>`;
+    if (removableTags.length === 0 && selectedBulkDeleteTags.size > 0) {
+        const opt = document.createElement('option');
+        opt.disabled = true;
+        opt.textContent = '(no tags to remove)';
+        removeSelect.appendChild(opt);
+    } else {
+        removableTags.forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag.id;
+            opt.textContent = tag.name;
+            removeSelect.appendChild(opt);
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1066,6 +1089,7 @@ export function attachTagSectionListeners(modalRoot) {
     modalRoot.querySelectorAll('input[name="bulkEditMatch"]').forEach(radio => {
         radio.addEventListener('change', () => {
             bulkEditMatchMode = radio.value;
+            populateBulkEditDropdowns(); // Update Remove dropdown for new match mode
         });
     });
 
