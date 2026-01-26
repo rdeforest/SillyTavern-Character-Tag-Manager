@@ -335,6 +335,9 @@ function openCharacterTagManagerModal() {
                         <button id="refreshUpdatesListBtn" class="stcm_menu_button interactable">
                             <i class="fa-solid fa-sync"></i> Refresh List
                         </button>
+                        <button id="updateAllCharsBtn" class="stcm_menu_button interactable">
+                            <i class="fa-solid fa-download"></i> Update All
+                        </button>
                         <button id="importAllTagsBtn" class="stcm_menu_button interactable">
                             <i class="fa-solid fa-tags"></i> Import All Tags
                         </button>

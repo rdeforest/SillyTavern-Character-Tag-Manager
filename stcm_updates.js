@@ -2,9 +2,13 @@
 // Character update management - check for and apply updates from source URLs
 
 import { characters } from '../../../../script.js';
-import { tags, tag_map } from '../../../tags.js';
-import { callSaveandReload } from './index.js';
-import { uuidv4 } from '../../../utils.js';
+
+/**
+ * Get the ST context with the new APIs
+ */
+function getSTContext() {
+    return SillyTavern.getContext();
+}
 
 /**
  * Get all characters that have a source URL
@@ -12,32 +16,14 @@ import { uuidv4 } from '../../../utils.js';
  */
 export function getCharactersWithSources() {
     const result = [];
+    const context = getSTContext();
 
     for (let i = 0; i < characters.length; i++) {
         const char = characters[i];
         if (!char) continue;
 
-        // Use ST's getCharacterSource if available, otherwise check manually
-        let sourceUrl = '';
-        try {
-            if (typeof getCharacterSource === 'function') {
-                sourceUrl = getCharacterSource(i);
-            }
-        } catch (e) {
-            // Fall back to manual check
-        }
-
-        if (!sourceUrl) {
-            // Check common source URL locations
-            sourceUrl = char?.data?.extensions?.source_url
-                || char?.data?.extensions?.chub?.full_path
-                || '';
-
-            // Build Chub URL if we have chub data
-            if (!sourceUrl && char?.data?.extensions?.chub?.full_path) {
-                sourceUrl = `https://chub.ai/characters/${char.data.extensions.chub.full_path}`;
-            }
-        }
+        // Use ST's getCharacterSource API
+        const sourceUrl = context.getCharacterSource(i);
 
         if (sourceUrl) {
             result.push({
@@ -150,26 +136,9 @@ export function renderUpdatesList() {
 
 /**
  * Update a character from its source URL
- * Opens the source URL in a new tab for the user to manually download
- * (Full automation would require accessing internal ST functions)
+ * Uses ST's importFromExternalUrl API to replace the character with the latest version
  */
 async function updateCharacterFromSource(charIndex, sourceUrl, btn) {
-    const char = characters[charIndex];
-    if (!char) {
-        toastr.error('Character not found');
-        return;
-    }
-
-    // Open the source URL so user can download the updated card
-    window.open(sourceUrl, '_blank');
-    toastr.info(`Opened source for "${char.name}". Download the card and use Replace/Update from the character menu.`);
-}
-
-/**
- * Import tags for a character from its embedded tag data
- * Characters imported from Chub often have tags stored in their data
- */
-async function importTagsForCharacter(charIndex, btn) {
     const char = characters[charIndex];
     if (!char) {
         toastr.error('Character not found');
@@ -181,20 +150,52 @@ async function importTagsForCharacter(charIndex, btn) {
     btn.disabled = true;
 
     try {
-        // Check for embedded tags in character data
-        const embeddedTags = char.tags || char.data?.tags || [];
+        const context = getSTContext();
+        // Use preserveFileName to replace the existing character instead of creating a new one
+        await context.importFromExternalUrl(sourceUrl, { preserveFileName: char.avatar });
+        toastr.success(`Updated "${char.name}" from source`);
+        // Refresh the list in case anything changed
+        renderUpdatesList();
+    } catch (err) {
+        console.error('Failed to update character:', err);
+        toastr.error(`Failed to update "${char.name}": ${err.message || 'Unknown error'}`);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
 
-        if (!embeddedTags || embeddedTags.length === 0) {
-            toastr.warning(`No embedded tags found for "${char.name}"`);
-            return;
-        }
+/**
+ * Import tags for a character from its embedded tag data
+ * Uses ST's importTags API for proper tag handling
+ */
+async function importTagsForCharacter(charIndex, btn) {
+    const char = characters[charIndex];
+    if (!char) {
+        toastr.error('Character not found');
+        return;
+    }
 
-        // Import the embedded tags
-        const result = await applyEmbeddedTags(charIndex, embeddedTags);
-        if (result.added > 0) {
-            toastr.success(`Added ${result.added} tag(s) to "${char.name}"`);
+    // Check for embedded tags in character data
+    const embeddedTags = char.tags || char.data?.tags || [];
+
+    if (!embeddedTags || embeddedTags.length === 0) {
+        toastr.warning(`No embedded tags found for "${char.name}"`);
+        return;
+    }
+
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+
+    try {
+        const context = getSTContext();
+        // Use ST's importTags API - it handles tag creation, deduplication, and user preferences
+        const result = await context.importTags(char);
+        if (result) {
+            toastr.success(`Imported tags for "${char.name}"`);
         } else {
-            toastr.info(`No new tags to add for "${char.name}" (${result.existing} already applied)`);
+            toastr.info(`No new tags imported for "${char.name}"`);
         }
     } catch (err) {
         console.error('Failed to import tags:', err);
@@ -206,64 +207,11 @@ async function importTagsForCharacter(charIndex, btn) {
 }
 
 /**
- * Apply embedded tags to a character
- */
-async function applyEmbeddedTags(charIndex, embeddedTags) {
-    const char = characters[charIndex];
-    const charKey = char.avatar; // This is the key used in tag_map
-
-    let added = 0;
-    let existing = 0;
-
-    // Ensure character has an entry in tag_map
-    if (!tag_map[charKey]) {
-        tag_map[charKey] = [];
-    }
-
-    for (const tagName of embeddedTags) {
-        const cleanName = String(tagName).trim();
-        if (!cleanName) continue;
-
-        // Find or create the tag
-        let tag = tags.find(t => t.name.toLowerCase() === cleanName.toLowerCase());
-
-        if (!tag) {
-            // Create new tag
-            const styles = getComputedStyle(document.body);
-            const defaultBg = styles.getPropertyValue('--SmartThemeShadowColor')?.trim() || '#cccccc';
-            const defaultFg = styles.getPropertyValue('--SmartThemeBodyColor')?.trim() || '#000000';
-
-            tag = {
-                id: uuidv4(),
-                name: cleanName,
-                color: defaultBg,
-                color2: defaultFg,
-                folder_type: 'NONE',
-            };
-            tags.push(tag);
-        }
-
-        // Add tag to character if not already present
-        if (!tag_map[charKey].includes(tag.id)) {
-            tag_map[charKey].push(tag.id);
-            added++;
-        } else {
-            existing++;
-        }
-    }
-
-    if (added > 0) {
-        await callSaveandReload();
-    }
-
-    return { added, existing };
-}
-
-/**
- * Import embedded tags for all characters
+ * Import embedded tags for all characters using ST's importTags API
  */
 export async function importAllTags() {
     const statusMsg = document.getElementById('updatesStatusMsg');
+    const context = getSTContext();
 
     // Get all characters with embedded tags
     const charsWithTags = [];
@@ -271,7 +219,7 @@ export async function importAllTags() {
         const char = characters[i];
         const embeddedTags = char?.tags || char?.data?.tags || [];
         if (embeddedTags.length > 0) {
-            charsWithTags.push({ index: i, name: char.name, tags: embeddedTags });
+            charsWithTags.push({ index: i, char: char, name: char.name });
         }
     }
 
@@ -280,7 +228,6 @@ export async function importAllTags() {
         return;
     }
 
-    let totalAdded = 0;
     let charsUpdated = 0;
 
     for (let i = 0; i < charsWithTags.length; i++) {
@@ -291,9 +238,9 @@ export async function importAllTags() {
         }
 
         try {
-            const result = await applyEmbeddedTags(charInfo.index, charInfo.tags);
-            if (result.added > 0) {
-                totalAdded += result.added;
+            // Use ST's importTags API with ALL setting to import without prompting
+            const result = await context.importTags(charInfo.char, { importSetting: 'all' });
+            if (result) {
                 charsUpdated++;
             }
         } catch (err) {
@@ -306,7 +253,53 @@ export async function importAllTags() {
         statusMsg.textContent = `${charsWithSources.length} character(s) with source URLs`;
     }
 
-    toastr.success(`Added ${totalAdded} tag(s) across ${charsUpdated} character(s)`);
+    toastr.success(`Imported tags for ${charsUpdated} character(s)`);
+}
+
+/**
+ * Update all characters from their source URLs
+ */
+export async function updateAllCharacters() {
+    const statusMsg = document.getElementById('updatesStatusMsg');
+    const context = getSTContext();
+    const charsWithSources = getCharactersWithSources();
+
+    if (charsWithSources.length === 0) {
+        toastr.info('No characters with source URLs found');
+        return;
+    }
+
+    let updated = 0;
+    let failed = 0;
+
+    for (let i = 0; i < charsWithSources.length; i++) {
+        const charInfo = charsWithSources[i];
+
+        if (statusMsg) {
+            statusMsg.textContent = `Updating... ${i + 1}/${charsWithSources.length}: ${charInfo.name}`;
+        }
+
+        try {
+            await context.importFromExternalUrl(charInfo.sourceUrl, { preserveFileName: charInfo.avatar });
+            updated++;
+        } catch (err) {
+            console.error(`Failed to update ${charInfo.name}:`, err);
+            failed++;
+        }
+    }
+
+    if (statusMsg) {
+        statusMsg.textContent = `${charsWithSources.length} character(s) with source URLs`;
+    }
+
+    if (failed > 0) {
+        toastr.warning(`Updated ${updated} character(s), ${failed} failed`);
+    } else {
+        toastr.success(`Updated ${updated} character(s)`);
+    }
+
+    // Refresh the list
+    renderUpdatesList();
 }
 
 /**
@@ -314,16 +307,28 @@ export async function importAllTags() {
  */
 export function attachUpdatesSectionListeners() {
     const refreshBtn = document.getElementById('refreshUpdatesListBtn');
+    const updateAllBtn = document.getElementById('updateAllCharsBtn');
     const importAllBtn = document.getElementById('importAllTagsBtn');
 
     refreshBtn?.addEventListener('click', () => {
         renderUpdatesList();
     });
 
+    updateAllBtn?.addEventListener('click', async () => {
+        const charsWithSources = getCharactersWithSources();
+        const confirmed = await confirmAction(
+            'Update All Characters',
+            `This will update ${charsWithSources.length} character(s) from their source URLs. This may take a while. Continue?`
+        );
+        if (confirmed) {
+            await updateAllCharacters();
+        }
+    });
+
     importAllBtn?.addEventListener('click', async () => {
         const confirmed = await confirmAction(
             'Import All Tags',
-            'This will import tags for all characters with source URLs. Existing tags will be replaced. Continue?'
+            'This will import embedded tags for all characters. Continue?'
         );
         if (confirmed) {
             await importAllTags();
