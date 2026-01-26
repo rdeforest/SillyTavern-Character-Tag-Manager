@@ -1126,7 +1126,13 @@ justify-content: flex-end;
     display: inline-block;
 }
 
-/* === Updates Table === */
+/* === Updates Section === */
+#updatesListWrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 .stcm_updates_table {
     width: 100%;
     border-collapse: collapse;
