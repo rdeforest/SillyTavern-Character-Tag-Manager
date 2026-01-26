@@ -93,67 +93,66 @@ async function checkCharacterFreshness(charIndex, sourceUrl) {
         const chubInfo = parseChubUrl(sourceUrl);
 
         if (chubInfo) {
-            // For Chub, we need to go through ST's server-side proxy
-            // because of CORS restrictions
-            const response = await fetch('/api/content/chub-metadata', {
-                method: 'POST',
+            // Call Chub API directly - works with User-Agent: SillyTavern
+            const apiUrl = `https://api.chub.ai/api/characters/${chubInfo.creator}/${chubInfo.name}`;
+            const response = await fetch(apiUrl, {
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
-                    ...SillyTavern.getContext().getRequestHeaders(),
+                    'Accept': 'application/json',
+                    'User-Agent': 'SillyTavern',
                 },
-                body: JSON.stringify({
-                    creator: chubInfo.creator,
-                    name: chubInfo.name,
-                }),
             });
 
             if (response.ok) {
-                const metadata = await response.json();
-                // Check if the source has been updated
-                // Compare using last_activity_at or updated_at from Chub API
-                const sourceUpdateTime = metadata.last_activity_at || metadata.updated_at;
-                const localUpdateTime = char.create_date ? new Date(char.create_date).getTime() : 0;
+                const data = await response.json();
+                const metadata = data.node || {};
 
-                const status = sourceUpdateTime && sourceUpdateTime > localUpdateTime ? 'stale' : 'fresh';
+                // Get the source's last activity time
+                const sourceUpdateTime = metadata.lastActivityAt
+                    ? new Date(metadata.lastActivityAt).getTime()
+                    : null;
+
+                // Get local character's import/create time
+                const localUpdateTime = char.create_date
+                    ? new Date(char.create_date).getTime()
+                    : 0;
+
+                // Determine freshness status
+                let status = 'fresh';
+                if (sourceUpdateTime && localUpdateTime) {
+                    status = sourceUpdateTime > localUpdateTime ? 'stale' : 'fresh';
+                } else if (!sourceUpdateTime) {
+                    status = 'unknown';
+                }
 
                 setCharacterFreshness(avatar, {
                     status,
                     lastSourceUpdate: sourceUpdateTime,
                     sourceCreator: metadata.fullPath?.split('/')[0] || chubInfo.creator,
+                    sourceName: metadata.name,
                 });
+
+                console.debug(`[STCM] Freshness: ${char.name} is ${status} (source: ${metadata.lastActivityAt}, local: ${char.create_date})`);
             } else {
-                // Server endpoint might not exist yet - fall back to simple check
-                await checkFreshnessViaImport(charIndex, sourceUrl);
+                console.warn(`[STCM] Chub API returned ${response.status} for ${chubInfo.creator}/${chubInfo.name}`);
+                setCharacterFreshness(avatar, {
+                    status: 'error',
+                    errorMessage: `API returned ${response.status}`,
+                });
             }
         } else {
             // For non-Chub sources, we can't easily check freshness
-            // Mark as unknown for now
             setCharacterFreshness(avatar, {
                 status: 'unknown',
             });
         }
     } catch (err) {
-        console.error(`Freshness check failed for ${char.name}:`, err);
+        console.error(`[STCM] Freshness check failed for ${char.name}:`, err);
         setCharacterFreshness(avatar, {
             status: 'error',
             errorMessage: err.message,
         });
     }
-}
-
-/**
- * Fallback: Check freshness by comparing character data
- * This is a lightweight check - we just mark as "checked" without deep comparison
- */
-async function checkFreshnessViaImport(charIndex, sourceUrl) {
-    const char = characters[charIndex];
-    if (!char) return;
-
-    // For now, just mark as checked without actually fetching
-    // Full import would be too heavy for a background check
-    setCharacterFreshness(char.avatar, {
-        status: 'unknown', // Can't determine without fetching
-    });
 }
 
 /**
