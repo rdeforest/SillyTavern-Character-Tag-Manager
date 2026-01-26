@@ -66,7 +66,7 @@ import { injectStcmSettingsPanel, updateDefaultTagManagerVisibility, updateRecen
 
 import { initCustomGreetingWorkshop } from './stcm_custom_greetings.js';
 
-import { renderUpdatesList, attachUpdatesSectionListeners } from './stcm_updates.js';
+import { renderUpdatesList, attachUpdatesSectionListeners, populateAuthorDropdown } from './stcm_updates.js';
 
 
 
@@ -330,10 +330,11 @@ function openCharacterTagManagerModal() {
                 <div style="padding: 1em 0;">
                     <div style="margin-bottom: 1em; opacity: 0.8;">
                         Characters with source URLs can be updated from their original source (Chub, GitHub, etc.)
+                        <br><small>Background freshness checking runs automatically (1 check/minute).</small>
                     </div>
-                    <div class="stcm_sort_row" style="margin-bottom: 1em;">
+                    <div class="stcm_sort_row" style="margin-bottom: 0.5em;">
                         <button id="refreshUpdatesListBtn" class="stcm_menu_button interactable">
-                            <i class="fa-solid fa-sync"></i> Refresh List
+                            <i class="fa-solid fa-sync"></i> Refresh
                         </button>
                         <button id="updateAllCharsBtn" class="stcm_menu_button interactable">
                             <i class="fa-solid fa-download"></i> Update All
@@ -341,10 +342,18 @@ function openCharacterTagManagerModal() {
                         <button id="importAllTagsBtn" class="stcm_menu_button interactable">
                             <i class="fa-solid fa-tags"></i> Import All Tags
                         </button>
+                    </div>
+                    <div class="stcm_sort_row" style="margin-bottom: 1em;">
+                        <label style="display: flex; align-items: center; gap: 6px;">
+                            <span>Author:</span>
+                            <select id="authorFilterSelect" class="stcm_menu_button interactable" style="min-width: 150px;">
+                                <option value="">All Authors</option>
+                            </select>
+                        </label>
                         <span id="updatesStatusMsg" style="margin-left: 1em; opacity: 0.7;"></span>
                     </div>
                     <div id="updatesListWrapper">
-                        <div class="loading">Click "Refresh List" to scan for characters with source URLs...</div>
+                        <div class="loading">Click "Refresh" to scan for characters with source URLs...</div>
                     </div>
                 </div>
             </div>
@@ -462,6 +471,11 @@ refreshFoldersTree();
                                 // Trigger input event so the tag chips refresh
                                 assignTagSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
                             }
+                        }
+
+                        // Populate author dropdown for Updates section
+                        if (targetId === 'updatesSection') {
+                            populateAuthorDropdown();
                         }
                 }
             });

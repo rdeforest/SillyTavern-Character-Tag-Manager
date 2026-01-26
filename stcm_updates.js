@@ -2,6 +2,17 @@
 // Character update management - check for and apply updates from source URLs
 
 import { characters } from '../../../../script.js';
+import {
+    getCharacterFreshness,
+    getCharacterAuthor,
+    getAllAuthors,
+    formatTimestamp,
+    getFreshnessIcon,
+    startFreshnessChecker,
+} from './stcm_freshness.js';
+
+// Current author filter
+let authorFilter = '';
 
 /**
  * Get the ST context with the new APIs
@@ -46,31 +57,58 @@ export function renderUpdatesList() {
     const statusMsg = document.getElementById('updatesStatusMsg');
     if (!wrapper) return;
 
-    const charsWithSources = getCharactersWithSources();
+    let charsWithSources = getCharactersWithSources();
+
+    // Add author info to each character
+    charsWithSources = charsWithSources.map(char => ({
+        ...char,
+        author: getCharacterAuthor(char.index),
+        freshness: getCharacterFreshness(char.avatar),
+    }));
+
+    // Apply author filter if set
+    if (authorFilter) {
+        charsWithSources = charsWithSources.filter(
+            char => char.author.toLowerCase() === authorFilter.toLowerCase()
+        );
+    }
 
     if (charsWithSources.length === 0) {
         wrapper.innerHTML = `
             <div style="padding: 1em; opacity: 0.7; text-align: center;">
-                No characters with source URLs found.<br>
-                Characters imported from Chub or other sources will appear here.
+                ${authorFilter
+                    ? `No characters found for author "${escapeHtml(authorFilter)}".`
+                    : 'No characters with source URLs found.<br>Characters imported from Chub or other sources will appear here.'}
             </div>
         `;
         if (statusMsg) statusMsg.textContent = '';
         return;
     }
 
+    // Count stale characters
+    const staleCount = charsWithSources.filter(c => c.freshness.status === 'stale').length;
     if (statusMsg) {
-        statusMsg.textContent = `${charsWithSources.length} character(s) with source URLs`;
+        let msg = `${charsWithSources.length} character(s)`;
+        if (staleCount > 0) {
+            msg += ` (${staleCount} update${staleCount > 1 ? 's' : ''} available)`;
+        }
+        if (authorFilter) {
+            msg += ` by ${authorFilter}`;
+        }
+        statusMsg.textContent = msg;
     }
 
-    // Build table
+    // Build table with new columns
     let html = `
         <table class="stcm_updates_table">
             <thead>
                 <tr>
+                    <th style="width: 30px;" title="Freshness status"></th>
                     <th style="width: 40px;"></th>
                     <th>Character</th>
+                    <th>Author</th>
                     <th>Source</th>
+                    <th style="width: 70px;">Checked</th>
                     <th style="width: 180px;">Actions</th>
                 </tr>
             </thead>
@@ -83,12 +121,16 @@ export function renderUpdatesList() {
             : '/img/ai4.png';
 
         // Truncate URL for display
-        const displayUrl = char.sourceUrl.length > 50
-            ? char.sourceUrl.substring(0, 47) + '...'
+        const displayUrl = char.sourceUrl.length > 40
+            ? char.sourceUrl.substring(0, 37) + '...'
             : char.sourceUrl;
 
+        const freshnessIcon = getFreshnessIcon(char.freshness.status);
+        const lastChecked = formatTimestamp(char.freshness.lastChecked);
+
         html += `
-            <tr data-char-index="${char.index}" data-source-url="${escapeHtml(char.sourceUrl)}">
+            <tr data-char-index="${char.index}" data-source-url="${escapeHtml(char.sourceUrl)}" data-author="${escapeHtml(char.author)}">
+                <td class="freshness-cell">${freshnessIcon}</td>
                 <td>
                     <img src="${avatarUrl}" alt="" style="width: 36px; height: 36px; border-radius: 4px; object-fit: cover;">
                 </td>
@@ -96,10 +138,16 @@ export function renderUpdatesList() {
                     <strong>${escapeHtml(char.name)}</strong>
                 </td>
                 <td>
+                    <a href="#" class="stcm-author-link" data-author="${escapeHtml(char.author)}" title="Filter by this author" style="color: var(--SmartThemeQuoteColor, #8cf);">
+                        ${escapeHtml(char.author) || '<em>Unknown</em>'}
+                    </a>
+                </td>
+                <td>
                     <a href="${escapeHtml(char.sourceUrl)}" target="_blank" title="${escapeHtml(char.sourceUrl)}" style="color: var(--SmartThemeQuoteColor, #8cf);">
                         ${escapeHtml(displayUrl)}
                     </a>
                 </td>
+                <td style="opacity: 0.7; font-size: 0.9em;">${lastChecked}</td>
                 <td>
                     <button class="stcm_menu_button small interactable stcm-update-char-btn" title="Update character from source">
                         <i class="fa-solid fa-download"></i> Update
@@ -114,6 +162,15 @@ export function renderUpdatesList() {
 
     html += '</tbody></table>';
     wrapper.innerHTML = html;
+
+    // Wire up author links
+    wrapper.querySelectorAll('.stcm-author-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const author = e.target.closest('.stcm-author-link').dataset.author;
+            setAuthorFilter(author);
+        });
+    });
 
     // Wire up buttons
     wrapper.querySelectorAll('.stcm-update-char-btn').forEach(btn => {
@@ -303,14 +360,46 @@ export async function updateAllCharacters() {
 }
 
 /**
+ * Set the author filter and re-render
+ */
+export function setAuthorFilter(author) {
+    authorFilter = author || '';
+    const dropdown = document.getElementById('authorFilterSelect');
+    if (dropdown) {
+        dropdown.value = authorFilter;
+    }
+    renderUpdatesList();
+}
+
+/**
+ * Populate the author filter dropdown
+ */
+export function populateAuthorDropdown() {
+    const dropdown = document.getElementById('authorFilterSelect');
+    if (!dropdown) return;
+
+    const authors = getAllAuthors();
+    let html = '<option value="">All Authors</option>';
+
+    for (const author of authors) {
+        const selected = author === authorFilter ? 'selected' : '';
+        html += `<option value="${escapeHtml(author)}" ${selected}>${escapeHtml(author)}</option>`;
+    }
+
+    dropdown.innerHTML = html;
+}
+
+/**
  * Attach event listeners for the Updates section
  */
 export function attachUpdatesSectionListeners() {
     const refreshBtn = document.getElementById('refreshUpdatesListBtn');
     const updateAllBtn = document.getElementById('updateAllCharsBtn');
     const importAllBtn = document.getElementById('importAllTagsBtn');
+    const authorDropdown = document.getElementById('authorFilterSelect');
 
     refreshBtn?.addEventListener('click', () => {
+        populateAuthorDropdown();
         renderUpdatesList();
     });
 
@@ -334,6 +423,13 @@ export function attachUpdatesSectionListeners() {
             await importAllTags();
         }
     });
+
+    authorDropdown?.addEventListener('change', (e) => {
+        setAuthorFilter(e.target.value);
+    });
+
+    // Start the background freshness checker
+    startFreshnessChecker();
 }
 
 /**
